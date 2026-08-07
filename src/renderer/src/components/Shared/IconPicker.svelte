@@ -112,8 +112,9 @@
     'items/eq_switch': 'EQ Switch',
     'items/food_sushi': 'Food',
     'items/pill_gold': 'Pill',
-    'items/vital_fp': 'Vital FP',
-    'items/refresher_mp': 'Refresher MP',
+    'items/vital_fp': 'FP Vitaldrink',
+    'items/refresher_mp': 'MP Refresher',
+    'items/antidote_potion': 'Antidote Potion',
     'items/wings': 'Flying Mount'
   };
 

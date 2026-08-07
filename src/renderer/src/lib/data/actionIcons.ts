@@ -268,7 +268,7 @@ export const actionIcons: string[] = [
     "skill/templar_enhanced_magical_defense",
     "skill/templar_enhanced_physical_defense",
     "skill/templar_execution_of_justice",
-    "skill/templar_four_strikes",
+    "skill/templar_five_strikes",
     "skill/templar_increased_hp_recovery",
     "skill/templar_increased_hp_regeneration",
     "skill/templar_last_one_standing",
@@ -318,6 +318,7 @@ export const actionIcons: string[] = [
     "items/pill_gold",
     "items/vital_fp",
     "items/refresher_mp",
+    "items/antidote_potion",
     "items/blinkwing",
     "items/sprint_scroll",
     "items/wings"
