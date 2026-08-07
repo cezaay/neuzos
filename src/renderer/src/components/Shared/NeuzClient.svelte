@@ -8,10 +8,19 @@
 
   const webviewPreloadPath: string = (window as any)._preloadPaths?.webview ?? '';
 
-  let {session, onUpdate, autofocusEnabled = $bindable(), layoutId, src, userAgent}: {
+  let {
+    session,
+    onUpdate,
+    onWebviewReady,
+    autofocusEnabled = $bindable(),
+    layoutId,
+    src,
+    userAgent
+  }: {
     session: NeuzSession
     layoutId: string
     onUpdate: (sessionId: string) => void
+    onWebviewReady?: () => void
     autofocusEnabled: boolean
     src: string
     userAgent?: string
@@ -383,8 +392,12 @@ window.open = function(...args) {
     // so we use it only for re-applying zoom, not for clearing health.
     const onDidNavigate = () => clearSessionHealth()
     const applyZoomWhenReady = () => {
+      const becameReady = !webviewReady
       webviewReady = true
       initZoom(webviewEl, 0)
+      if (becameReady) {
+        onWebviewReady?.()
+      }
     }
     const onDidFinishLoad = () => applyZoomWhenReady()
     const onDomReady = () => applyZoomWhenReady()
