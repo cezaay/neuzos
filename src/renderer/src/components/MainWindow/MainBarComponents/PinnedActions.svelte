@@ -6,7 +6,12 @@
   import type {MainWindowState} from '$lib/types';
   import {getCooldownsContext} from '$lib/contexts/cooldownsContext';
   import {getWidgetsContext} from '$lib/contexts/widgetsContext.svelte.js';
-  import {readActionPinsAutoLoadLatest, readActionPinsLatestPins, writeActionPinsLatestPins} from '$lib/localStorageStores';
+  import {
+    ACTION_PINS_VISIBILITY_CHANGED_EVENT,
+    readActionPinsLatestPins,
+    readActionPinsVisible,
+    writeActionPinsLatestPins
+  } from '$lib/localStorageStores';
 
   type Props = {
     onHasPinnedActionsChange?: (hasPinnedActions: boolean) => void;
@@ -20,8 +25,9 @@
 
   const ACTION_PIN_WIDGET_TYPE = 'widget.builtin.action_pin';
 
-  let didInitPinPersistence = false;
+  let didInitPinPersistence = $state(false);
   let initialSavedLatestPinSessionIds: string[] = [];
+  let showActionPins = $state(true);
 
   // Force reactivity for cooldown updates
   let cooldownTrigger = $state(0);
@@ -55,10 +61,6 @@
     );
   }
 
-  function readAutoLoadLatestPins(): boolean {
-    return readActionPinsAutoLoadLatest();
-  }
-
   function readSavedLatestPinSessionIds(): string[] {
     return readActionPinsLatestPins();
   }
@@ -74,15 +76,22 @@
   const validSessionIdsWithActions = $derived(getSessionsWithActions());
 
   onMount(() => {
+    const refreshActionPinsVisibility = () => {
+      showActionPins = readActionPinsVisible();
+    };
     const unsubscribe = cooldownsContext.subscribe(() => {
       cooldownTrigger++;
     });
+
+    refreshActionPinsVisibility();
+    window.addEventListener(ACTION_PINS_VISIBILITY_CHANGED_EVENT, refreshActionPinsVisibility);
+    window.addEventListener('storage', refreshActionPinsVisibility);
 
     initialSavedLatestPinSessionIds = readSavedLatestPinSessionIds();
     didInitPinPersistence = true;
 
     const validSessionIds = new Set(validSessionIdsWithActions);
-    if (validSessionIds.size > 0 && readAutoLoadLatestPins()) {
+    if (validSessionIds.size > 0) {
       const existingPinnedSessionIds = new Set(
         actionPinWidgets
           .map(widget => widget.data?.sessionId)
@@ -99,6 +108,8 @@
 
     return () => {
       unsubscribe();
+      window.removeEventListener(ACTION_PINS_VISIBILITY_CHANGED_EVENT, refreshActionPinsVisibility);
+      window.removeEventListener('storage', refreshActionPinsVisibility);
     };
   });
 
@@ -119,6 +130,8 @@
 
   // Get all pinned actions from sessions that have action pad widgets (even if hidden)
   const pinnedActionsToShow = $derived.by(() => {
+    if (!showActionPins) return [];
+
     const actionPadWidgets = actionPinWidgets;
 
     const result: Array<{
