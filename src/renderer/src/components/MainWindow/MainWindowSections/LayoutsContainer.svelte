@@ -2,6 +2,7 @@
   import {getContext} from "svelte";
   import type {MainWindowState} from "$lib/types";
   import * as Resizable from '$lib/components/ui/resizable'
+  import {temporaryLayoutRendering} from '$lib/temporaryLayoutRendering.svelte';
   import NeuzClient from "../../Shared/NeuzClient.svelte";
 
   const mainWindowState = getContext<MainWindowState>('mainWindowState');
@@ -9,10 +10,14 @@
 
 {#each mainWindowState.layouts as layout (layout.id)}
   {#if mainWindowState.tabs.layoutsIds.includes(layout.id)}
+    {@const keepRenderedInBackground = temporaryLayoutRendering.layoutIds.includes(layout.id)}
     <div
+      inert={layout.id !== mainWindowState.tabs.activeLayoutId}
       class="h-full w-full left-0 top-0 absolute bg-background select-none {layout.id === mainWindowState.tabs.activeLayoutId
           ? 'z-[39]'
-          : 'z-[0] hidden'} overflow-hidden"
+          : keepRenderedInBackground
+            ? 'z-[0] pointer-events-none'
+            : 'z-[0] hidden'} overflow-hidden"
     >
       <Resizable.PaneGroup direction={layout.columnFirst ? "horizontal" : "vertical"} class="h-full w-full" autoSaveId={(layout.columnFirst ? 'cols_' : 'rows_') + layout.id}>
         {#each layout.rows as row, rowIndex}

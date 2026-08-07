@@ -31,7 +31,7 @@
     Search,
     ArrowDown
   } from '@lucide/svelte'
-  import {getContext, onMount} from "svelte";
+  import {getContext, onDestroy, onMount} from "svelte";
   import type {MainWindowState, NeuzLayout, NeuzSession, NeuzSessionGroup} from "$lib/types";
   import * as Dialog from '$lib/components/ui/dialog'
   import * as ContextMenu from '$lib/components/ui/context-menu'
@@ -53,6 +53,10 @@
     readSettingsCollapsedGroups,
     writeSettingsCollapsedGroups,
   } from "$lib/localStorageStores";
+  import {
+    temporaryLayoutRendering,
+    type TemporaryLayoutRenderingLease,
+  } from "$lib/temporaryLayoutRendering.svelte";
 
   let shortcutsEnabled = $state(true);
   let collapsedSessionGroupIds: Record<string, boolean> = $state({});
@@ -61,6 +65,17 @@
   let layoutLauncherSearchQuery = $state('');
   let sessionLauncherSearchQuery = $state('');
   const ungroupedGroupId = 'ungrouped';
+  const START_ALL_BACKGROUND_RENDER_MS = 5000;
+  let startAllLayoutsPending = $state(false);
+  let startAllLayoutRenderingLease: TemporaryLayoutRenderingLease | null = null;
+  let startAllLayoutRenderingTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  onDestroy(() => {
+    if (startAllLayoutRenderingTimeout !== null) {
+      clearTimeout(startAllLayoutRenderingTimeout);
+    }
+    startAllLayoutRenderingLease?.release();
+  });
 
   function loadCollapsedSessionGroups() {
     collapsedSessionGroupIds = readSettingsCollapsedGroups('sessionLauncherMainbar', sanitizeCollapsedSessionGroups);
@@ -321,9 +336,54 @@
     const layout = mainWindowState.layouts.find(l => l.id === layoutId)
     if (layout) {
       layout.rows.flatMap(r => r.sessionIds).forEach(sessionId => {
-        neuzosBridge.sessions.start(sessionId, layoutId)
+        if (!isSessionStarted(layoutId, sessionId)) {
+          neuzosBridge.sessions.start(sessionId, layoutId)
+        }
       })
     }
+  }
+
+  const getMainbarLayoutsToStart = () => {
+    return mainWindowState.tabs.layoutsIds.filter(layoutId => {
+      const layout = mainWindowState.layouts.find(candidate => candidate.id === layoutId)
+      return layout?.rows.some(row => row.sessionIds.some(sessionId => !isSessionStarted(layoutId, sessionId))) ?? false
+    })
+  }
+
+  const startAllMainbarLayouts = () => {
+    if (startAllLayoutsPending) return
+
+    const layoutIds = getMainbarLayoutsToStart()
+    if (layoutIds.length === 0) return
+
+    if (mainWindowState.tabs.activeLayoutId === 'home') {
+      const firstMainbarLayoutId = mainWindowState.tabs.layoutOrder.find(layoutId =>
+        mainWindowState.tabs.layoutsIds.includes(layoutId) &&
+        mainWindowState.layouts.some(layout => layout.id === layoutId)
+      )
+      if (firstMainbarLayoutId) {
+        switchToLayout(firstMainbarLayoutId)
+      }
+    }
+
+    startAllLayoutsPending = true
+    startAllLayoutRenderingLease?.release()
+    startAllLayoutRenderingLease = temporaryLayoutRendering.acquire(layoutIds)
+    layoutIds.forEach(startAllSessions)
+
+    if (startAllLayoutRenderingTimeout !== null) {
+      clearTimeout(startAllLayoutRenderingTimeout)
+    }
+    startAllLayoutRenderingTimeout = setTimeout(() => {
+      startAllLayoutRenderingLease?.release()
+      startAllLayoutRenderingLease = null
+      startAllLayoutRenderingTimeout = null
+      startAllLayoutsPending = false
+    }, START_ALL_BACKGROUND_RENDER_MS)
+  }
+
+  const hasMainbarSessionsToStart = () => {
+    return !startAllLayoutsPending && getMainbarLayoutsToStart().length > 0
   }
 
   const muteSession = (layoutId: string, sessionId: string) => {
@@ -511,9 +571,16 @@
   id="titlebar"
   class="gap-2 p-1 px-2 select-none border-b border-accent flex items-center justify-end bg-accent/50 min-h-10"
 >
-  <div class="flex items-center gap-2">
-    <img src="favicon.png" alt="NeuzOS Logo" class="size-6"/>
-  </div>
+  <Button
+    disabled={!hasMainbarSessionsToStart()}
+    size="icon-xs"
+    variant="ghost"
+    onclick={startAllMainbarLayouts}
+    class="cursor-pointer border border-transparent bg-transparent shadow-none enabled:hover:border-input disabled:cursor-default disabled:opacity-100"
+    title="Start All Layouts"
+  >
+    <img src="neuzos_pang.png" alt="" class="size-5 object-contain"/>
+  </Button>
   <Button disabled={mainWindowState.tabs.activeLayoutId === 'home'} size="icon-xs" variant="outline"
           onclick={switchToHome} class="cursor-pointer">
     <Home class="size-3.5"/>
