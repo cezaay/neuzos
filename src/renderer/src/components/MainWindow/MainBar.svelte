@@ -343,6 +343,22 @@
     }
   }
 
+  const areAllLayoutSessionsStarted = (layoutId: string) => {
+    const layout = mainWindowState.layouts.find(candidate => candidate.id === layoutId)
+    const sessionIds = layout?.rows.flatMap(row => row.sessionIds) ?? []
+    return sessionIds.length > 0 && sessionIds.every(sessionId => isSessionStarted(layoutId, sessionId))
+  }
+
+  const isAnyLayoutSessionStarted = (layoutId: string) => {
+    const layout = mainWindowState.layouts.find(candidate => candidate.id === layoutId)
+    return layout?.rows.some(row => row.sessionIds.some(sessionId => isSessionStarted(layoutId, sessionId))) ?? false
+  }
+
+  const restartAllSessions = (layoutId: string) => {
+    const layout = mainWindowState.layouts.find(candidate => candidate.id === layoutId)
+    layout?.rows.flatMap(row => row.sessionIds).forEach(sessionId => restartSession(layoutId, sessionId))
+  }
+
   const getMainbarLayoutsToStart = () => {
     return mainWindowState.tabs.layoutsIds.filter(layoutId => {
       const layout = mainWindowState.layouts.find(candidate => candidate.id === layoutId)
@@ -885,15 +901,23 @@
           <ContextMenu.Separator class="mx-2"/>
           <div class="flex items-center justify-between gap-2">
             <ContextMenu.Item class={cn("flex-1 items-center justify-center")}
-                              onclick={() => startAllSessions(layTab.id)}>
-              <Play class="h=4"/>
+                              onclick={() => areAllLayoutSessionsStarted(layTab.id)
+                                ? restartAllSessions(layTab.id)
+                                : startAllSessions(layTab.id)}>
+              {#if areAllLayoutSessionsStarted(layTab.id)}
+                <RefreshCcw class="h-4"/>
+              {:else}
+                <Play class="h-4"/>
+              {/if}
             </ContextMenu.Item
             >
-            <ContextMenu.Item class={cn("flex-1 items-center justify-center")}
-                              onclick={() => stopAllSessions(layTab.id)}>
-              <Square class="h=4"/>
-            </ContextMenu.Item
-            >
+            {#if isAnyLayoutSessionStarted(layTab.id)}
+              <ContextMenu.Item class={cn("flex-1 items-center justify-center")}
+                                onclick={() => stopAllSessions(layTab.id)}>
+                <Square class="h-4"/>
+              </ContextMenu.Item
+              >
+            {/if}
           </div>
           <ContextMenu.Separator/>
           {#each layTab.rows as row,idx (idx)}
@@ -931,6 +955,15 @@
                     </div>
                   </ContextMenu.Item>
                   <ContextMenu.Separator/>
+                  {#if isSessionStarted(layoutId, sessionId)}
+                    <ContextMenu.Item
+                      onclick={() => restartSession(layoutId, sessionId)}>
+                      <div class="flex items-center gap-2">
+                        <RefreshCcw class="h-4"/>
+                        Restart
+                      </div>
+                    </ContextMenu.Item>
+                  {/if}
                   <ContextMenu.Item
                     onclick={() => isSessionStarted(layoutId, sessionId) ? stopSession(sessionId) : startSession(layoutId, sessionId)}>
                     <div class="flex items-center gap-2">
@@ -941,13 +974,6 @@
                         <Play class="h-4"/>
                         Start
                       {/if}
-                    </div>
-                  </ContextMenu.Item>
-                  <ContextMenu.Item
-                    onclick={() => restartSession(layoutId, sessionId)}>
-                    <div class="flex items-center gap-2">
-                      <RefreshCcw class="h-4"/>
-                      Restart
                     </div>
                   </ContextMenu.Item>
                   <ContextMenu.Separator/>
