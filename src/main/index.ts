@@ -66,7 +66,6 @@ const allowedCommandLineSwitches = [
   {flag: "max-active-webgl-contexts=16", description: "Sets the Maximum Number of active WebGL Contexts to 16.", tooltip: "Allows up to 16 simultaneous WebGL Contexts, which is useful for Applications using multiple WebGL Canvases."},
   {flag: "max-active-webgl-contexts=32", description: "Sets the Maximum Number of active WebGL Contexts to 32.", tooltip: "Allows up to 32 simultaneous WebGL Contexts for Applications with heavy WebGL Usage."},
   //{flag: "no-proxy-server", description: "Reduce network latency from proxy lookups"},
-  {flag: "enable-low-end-device-mode", description: "Enables Low-End Device Optimizations.", tooltip: "Reduces Memory Usage and simplifies Rendering to improve Performance on Low-End Hardware."},
 ];
 
 let mainWindow: BrowserWindow | null = null;
@@ -1890,9 +1889,13 @@ function registerSessionKeybinds(mode: LaunchMode) {
     // Parse launch args after config is loaded to use defaultLaunchMode
     launchArgs = parseLaunchArgs(neuzosConfig);
 
-    neuzosConfig.chromium.commandLineSwitches = neuzosConfig.chromium.commandLineSwitches.filter((switchName) => {
+    const configuredCommandLineSwitches = neuzosConfig.chromium.commandLineSwitches;
+    neuzosConfig.chromium.commandLineSwitches = configuredCommandLineSwitches.filter((switchName) => {
       return allowedCommandLineSwitches.some(item => item.flag === switchName);
     });
+    if (neuzosConfig.chromium.commandLineSwitches.length !== configuredCommandLineSwitches.length) {
+      saveConfig(neuzosConfig);
+    }
 
     neuzosConfig.chromium.commandLineSwitches.forEach((switchName) => {
       const spl = switchName.split("=");
