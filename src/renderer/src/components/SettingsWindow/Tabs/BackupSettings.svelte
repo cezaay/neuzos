@@ -876,6 +876,7 @@
           rows: [
             ['Auto Save', formatValue(payload.autoSaveSettings ?? false)],
             ['Clear Cache on Startup', formatValue(payload.autoDeleteAllCachesOnStartup ?? false)],
+            ['Global Auto-Focus', formatValue(payload.globalAutoFocus ?? true)],
           ],
         },
         {

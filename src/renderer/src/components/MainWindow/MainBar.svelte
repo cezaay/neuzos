@@ -614,6 +614,7 @@
 <div
   id="titlebar"
   class="gap-2 p-1 px-2 select-none border-b border-accent flex items-center justify-end bg-accent/50 min-h-10"
+  style="-webkit-app-region: drag;"
 >
   <Button
     disabled={!hasMainbarSessionsToStart()}
@@ -1165,3 +1166,16 @@
     <X class="size-3.5"/>
   </Button>
 </div>
+
+<style>
+  #titlebar :global(button),
+  #titlebar :global(a),
+  #titlebar :global(input),
+  #titlebar :global(select),
+  #titlebar :global(textarea),
+  #titlebar :global([role='button']),
+  #titlebar :global([role='menuitem']),
+  #titlebar :global([contenteditable='true']) {
+    -webkit-app-region: no-drag;
+  }
+</style>

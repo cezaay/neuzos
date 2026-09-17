@@ -35,6 +35,7 @@
   let started: boolean = $state(false)
   let webview: WebviewTag | HTMLElement = $state()
   let webviewReady: boolean = $state(false)
+  let hoverFocusRequestPending = false
   const mainWindowState = getContext<MainWindowState>('mainWindowState')
 
   const isPersistedMuted = () => {
@@ -355,6 +356,22 @@ window.open = function(...args) {
     const onIpcMessage = (event: Event) => {
       const e = event as any
       const key: string = e.args?.[0]
+
+      if (e.channel === 'sessionhover') {
+        if (mainWindowState.config.globalAutoFocus !== false && !hoverFocusRequestPending) {
+          hoverFocusRequestPending = true
+          void window.electron.ipcRenderer.invoke('window.focus_on_hover')
+            .then((focused) => {
+              if (!focused) return
+              onActivate?.(session.id)
+              focus()
+            })
+            .finally(() => {
+              hoverFocusRequestPending = false
+            })
+        }
+        return
+      }
 
       if (handleLayoutFocusInput(e.channel, () => onActivate?.(session.id))) {
         return

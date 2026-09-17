@@ -315,6 +315,7 @@ type ConfigExportPayloadV2 = {
   fullscreen?: any;
   autoSaveSettings?: boolean;
   autoDeleteAllCachesOnStartup?: boolean;
+  globalAutoFocus?: boolean;
   defaultLaunchMode?: string;
   chromium?: { commandLineSwitches?: string[] };
   userAgent?: string;
@@ -373,7 +374,7 @@ function inferPayloadCategories(payload: any): ExportCategory[] {
   if (Array.isArray(payload?.sessionActions)) {
     categories.push('session-actions');
   }
-  if (payload?.window !== undefined || payload?.autoSaveSettings !== undefined || payload?.autoDeleteAllCachesOnStartup !== undefined || payload?.titleBarButtons !== undefined || payload?.fullscreen !== undefined) {
+  if (payload?.window !== undefined || payload?.autoSaveSettings !== undefined || payload?.autoDeleteAllCachesOnStartup !== undefined || payload?.globalAutoFocus !== undefined || payload?.titleBarButtons !== undefined || payload?.fullscreen !== undefined) {
     categories.push('general-settings');
   }
   if (Array.isArray(payload?.sessions) || Array.isArray(payload?.sessionGroups)) {
@@ -453,6 +454,7 @@ const defaultNeuzosConfig: any = {
   window: undefined,
   autoSaveSettings: false,
   autoDeleteAllCachesOnStartup: false,
+  globalAutoFocus: true,
   defaultLaunchMode: "normal",
   chromium: {
     commandLineSwitches: []
@@ -604,6 +606,10 @@ function cleanConfigForSave(conf: any): any {
     delete cleaned.autoDeleteAllCachesOnStartup;
   }
 
+  if (cleaned.globalAutoFocus === true) {
+    delete cleaned.globalAutoFocus;
+  }
+
   if (cleaned.defaultLaunchMode === 'normal') {
     delete cleaned.defaultLaunchMode;
   }
@@ -672,6 +678,7 @@ function orderConfigForSave(config: any): any {
     'activeKeyBindProfileId',
     'autoSaveSettings',
     'autoDeleteAllCachesOnStartup',
+    'globalAutoFocus',
     'window',
     'titleBarButtons',
     'fullscreen',
@@ -2266,6 +2273,28 @@ function registerShortcutsForFocusedWindow(): void {
       }
     });
 
+    ipcMain.handle("window.focus_on_hover", async (event) => {
+      if (neuzosConfig.globalAutoFocus === false) return false;
+      const hoverFocusWindows = BrowserWindow.getAllWindows().filter((window) => (
+        window === mainWindow || Boolean((window as any)?.sessionData)
+      ));
+      if (hoverFocusWindows.length < 2) return false;
+
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || (win !== mainWindow && !(win as any)?.sessionData)) return false;
+
+      const focusedWindow = BrowserWindow.getFocusedWindow();
+      const hoverFocusWindowIsActive = focusedWindow === mainWindow || Boolean((focusedWindow as any)?.sessionData);
+      if (focusedWindow && !hoverFocusWindowIsActive) return false;
+
+      if (!win.isFocused()) {
+        win.show();
+        win.focus();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      return win.isFocused();
+    });
+
     ipcMain.handle("session_window.start", async (event) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       const sessionId = (win as any)?.sessionData?.sessionId as string | undefined;
@@ -2964,6 +2993,7 @@ function registerShortcutsForFocusedWindow(): void {
             ...(parsed.fullscreen !== undefined ? {fullscreen: parsed.fullscreen} : {}),
             ...(parsed.autoSaveSettings !== undefined ? {autoSaveSettings: parsed.autoSaveSettings} : {}),
             ...(parsed.autoDeleteAllCachesOnStartup !== undefined ? {autoDeleteAllCachesOnStartup: parsed.autoDeleteAllCachesOnStartup} : {}),
+            ...(parsed.globalAutoFocus !== undefined ? {globalAutoFocus: parsed.globalAutoFocus} : {}),
             ...(parsed.defaultLaunchMode !== undefined ? {defaultLaunchMode: parsed.defaultLaunchMode} : {}),
             ...(parsed.userAgent !== undefined ? {userAgent: parsed.userAgent} : {}),
             ...(parsed.chromium !== undefined ? {chromium: parsed.chromium} : {}),
@@ -3268,6 +3298,10 @@ function registerShortcutsForFocusedWindow(): void {
           }
           if (incomingPayload.autoDeleteAllCachesOnStartup !== undefined) {
             neuzosConfig.autoDeleteAllCachesOnStartup = incomingPayload.autoDeleteAllCachesOnStartup;
+            didModify = true;
+          }
+          if (incomingPayload.globalAutoFocus !== undefined) {
+            neuzosConfig.globalAutoFocus = incomingPayload.globalAutoFocus;
             didModify = true;
           }
           if (incomingPayload.titleBarButtons !== undefined) {

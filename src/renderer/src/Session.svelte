@@ -45,8 +45,10 @@
   let isFullscreen = $state(false);
   let shortcutsEnabled = $state(true);
   const electronApi = window.electron.ipcRenderer;
+  const webviewPreloadPath: string = (window as any)._preloadPaths?.webview ?? '';
   let focusExitClickCount = 0;
   let focusExitClickTimer: ReturnType<typeof setTimeout> | null = null;
+  let hoverFocusRequestPending = false;
   let showFocusExitHintToast = $state(false);
   let focusExitHintToastText = $state('');
 
@@ -303,15 +305,27 @@
   }
 
   export const focus = () => {
-   // if (!autofocusEnabled) return
-    if (!webview.shadowRoot) {
-      webview.focus()
+    const webviewElement = getWebview()
+    if (!webviewElement) return
+    if (!webviewElement.shadowRoot) {
+      webviewElement.focus()
       return
     }
-    const cNodes = webview.shadowRoot.getRootNode().childNodes
+    const cNodes = webviewElement.shadowRoot.getRootNode().childNodes
     const client = cNodes[cNodes.length - 1] as HTMLElement
     if (client) {
       setTimeout(() => client.focus(), 1)
+    }
+  }
+
+  const focusSessionWindowOnHover = async () => {
+    if (neuzosConfig?.globalAutoFocus === false || hoverFocusRequestPending) return
+    hoverFocusRequestPending = true
+    try {
+      const focused = await electronApi.invoke('window.focus_on_hover')
+      if (focused) focus()
+    } finally {
+      hoverFocusRequestPending = false
     }
   }
 
@@ -448,6 +462,12 @@
     const zoom = getSessionZoom()
     if (!webviewElement) return
 
+    const onIpcMessage = (event: Event) => {
+      if ((event as any).channel === 'sessionhover') {
+        void focusSessionWindowOnHover()
+      }
+    }
+
     const applySessionState = () => {
       if (getWebview() !== webviewElement) return
       try {
@@ -460,10 +480,12 @@
     }
 
     applySessionState()
+    webviewElement.addEventListener('ipc-message', onIpcMessage)
     webviewElement.addEventListener('dom-ready', applySessionState)
     webviewElement.addEventListener('did-finish-load', applySessionState)
 
     return () => {
+      webviewElement.removeEventListener('ipc-message', onIpcMessage)
       webviewElement.removeEventListener('dom-ready', applySessionState)
       webviewElement.removeEventListener('did-finish-load', applySessionState)
     }
@@ -722,9 +744,7 @@ window.open = function(...args) {
 
   <!-- Webview Content -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="flex-1 relative" onmouseenter={() => {
-    focus()
-  }}>
+  <div class="flex-1 relative" onmouseenter={focusSessionWindowOnHover}>
     {#if sessionData}
       {#if !forceStopped && started}
         {#if getSrc().startsWith('https://flyff.wemadeconnect.com') && !koreanLinkFixed}
@@ -740,6 +760,7 @@ window.open = function(...args) {
           class="w-full h-full"
           webpreferences="nativeWindowOpen=no"
           useragent={userAgent}
+          preload={webviewPreloadPath}
         ></webview>
       {:else}
         <div

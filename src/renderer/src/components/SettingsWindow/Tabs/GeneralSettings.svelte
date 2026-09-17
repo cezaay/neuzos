@@ -221,6 +221,10 @@
     neuzosConfig.autoDeleteAllCachesOnStartup = enabled;
   }
 
+  function handleGlobalAutoFocusToggle(enabled: boolean) {
+    neuzosConfig.globalAutoFocus = enabled;
+  }
+
   // Handle fullscreen settings
   function handleHideTitleBarInMainWindow(enabled: boolean) {
     if (!neuzosConfig.fullscreen) {
@@ -412,6 +416,22 @@
           id="startup-cache-clear"
           checked={neuzosConfig.autoDeleteAllCachesOnStartup ?? false}
           onCheckedChange={handleStartupCacheToggle}
+        />
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div class="flex items-center justify-between py-2">
+        <div class="space-y-0.5">
+          <Label for="global-auto-focus" class="text-sm font-medium">Global Auto-Focus</Label>
+          <p class="text-xs text-muted-foreground">
+            Auto-Focuses the Window where the Mouse-Cursor is pointing at.
+          </p>
+        </div>
+        <Switch
+          id="global-auto-focus"
+          checked={neuzosConfig.globalAutoFocus ?? true}
+          onCheckedChange={handleGlobalAutoFocusToggle}
         />
       </div>
     </div>

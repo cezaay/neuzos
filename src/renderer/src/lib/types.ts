@@ -123,6 +123,7 @@ export type ConfigExportPayloadV2 = {
   fullscreen?: NeuzConfig['fullscreen'];
   autoSaveSettings?: boolean;
   autoDeleteAllCachesOnStartup?: boolean;
+  globalAutoFocus?: boolean;
   defaultLaunchMode?: NeuzConfig['defaultLaunchMode'];
   chromium?: NeuzConfig['chromium'];
   userAgent?: string;
@@ -225,6 +226,7 @@ export type NeuzConfig = {
   },
   autoSaveSettings: boolean;
   autoDeleteAllCachesOnStartup?: boolean;
+  globalAutoFocus?: boolean;
   userAgent?: string;
   defaultLaunchMode: 'normal' | 'session_launcher'
   chromium: {

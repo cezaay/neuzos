@@ -128,6 +128,7 @@
       defaultLaunchMode: 'normal',
       userAgent: undefined,
       autoSaveSettings: false,
+      globalAutoFocus: true,
       titleBarButtons: {
         darkModeToggle: false,
         fullscreenToggle: true,
@@ -156,7 +157,30 @@
 
   const electronApi = window.electron.ipcRenderer;
   const cleanupListeners: Array<() => void> = []
+  let mainWindowFocused = document.hasFocus()
+  let hoverFocusRequestPending = false
+  let hoverFocusAttempted = false
+  const focusMainWindowOnHover = () => {
+    if (mainWindowState.config.globalAutoFocus === false || mainWindowFocused || hoverFocusRequestPending || hoverFocusAttempted) return
+    hoverFocusAttempted = true
+    hoverFocusRequestPending = true
+    void electronApi.invoke('window.focus_on_hover').finally(() => {
+      hoverFocusRequestPending = false
+    })
+  }
+  const markMainWindowFocused = () => {
+    mainWindowFocused = true
+    hoverFocusAttempted = false
+  }
+  const markMainWindowBlurred = () => {
+    mainWindowFocused = false
+    hoverFocusAttempted = false
+  }
+  const resetHoverFocusAttempt = () => {
+    hoverFocusAttempted = false
+  }
   const updateLayoutFocusTitlebarVisibility = (event: MouseEvent) => {
+    focusMainWindowOnHover()
     isLayoutFocusTitlebarVisible = shouldRevealLayoutFocusTitlebar(
       Boolean(mainWindowState.tabs.focusedLayoutSession),
       event.clientY,
@@ -164,6 +188,9 @@
   }
 
   addEventListener('mousemove', updateLayoutFocusTitlebarVisibility)
+  addEventListener('focus', markMainWindowFocused)
+  addEventListener('blur', markMainWindowBlurred)
+  addEventListener('mouseleave', resetHoverFocusAttempt)
 
   const listen = (channel: string, listener: (...args: any[]) => void) => {
     electronApi.on(channel, listener)
@@ -173,6 +200,9 @@
   onDestroy(() => {
     cleanupListeners.forEach((cleanup) => cleanup())
     removeEventListener('mousemove', updateLayoutFocusTitlebarVisibility)
+    removeEventListener('focus', markMainWindowFocused)
+    removeEventListener('blur', markMainWindowBlurred)
+    removeEventListener('mouseleave', resetHoverFocusAttempt)
   })
 
   listen('event.layout_add', (_, layoutId: string) => {
@@ -535,6 +565,7 @@
     mainWindowState.config.userAgent = newConfig.userAgent || undefined
     mainWindowState.config.titleBarButtons = newConfig.titleBarButtons
     mainWindowState.config.window = newConfig.window
+    mainWindowState.config.globalAutoFocus = newConfig.globalAutoFocus ?? true
     mainWindowState.config.fullscreen = newConfig.fullscreen || {
       hideTitleBarInMainWindow: true,
       hideTitleBarInSessionLayouts: true
