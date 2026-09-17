@@ -41,7 +41,6 @@
   import {getElectronContext} from "$lib/contexts/electronContext";
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
   import {cn} from "$lib/utils";
-  import {Separator} from "$lib/components/ui/separator";
   import {Input} from "$lib/components/ui/input";
   import PinnedActions from "./MainBarComponents/PinnedActions.svelte";
   import PinnedWidgetLaunchers from "./MainBarComponents/PinnedWidgetLaunchers.svelte";
@@ -57,6 +56,8 @@
     temporaryLayoutRendering,
     type TemporaryLayoutRenderingLease,
   } from "$lib/temporaryLayoutRendering.svelte";
+
+  let {isFullscreen = false}: {isFullscreen?: boolean} = $props();
 
   let shortcutsEnabled = $state(true);
   let collapsedSessionGroupIds: Record<string, boolean> = $state({});
@@ -1034,7 +1035,7 @@
   <PinnedActions onHasPinnedActionsChange={(hasPinnedActions) => hasVisibleActionPins = hasPinnedActions}/>
 
   {#if hasVisibleActionPins}
-    <Separator orientation="vertical" class="h-4"/>
+    <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
   {/if}
 
   <PinnedWidgetLaunchers/>
@@ -1086,16 +1087,16 @@
     <ThemeToggle/>
   {/if}
 
-  <Separator orientation="vertical" class="h-4"/>
-  {#if mainWindowState.config.titleBarButtons.fullscreenToggle}
+  {#if mainWindowState.config.titleBarButtons.fullscreenToggle || isFullscreen || mainWindowState.tabs.focusedLayoutSession}
+    <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
     <Button size="icon-xs" variant="outline" onclick={() => {
         neuzosBridge.mainWindow.fullscreenToggle()
       }} class="cursor-pointer">
       <Fullscreen class="size-3.5"/>
     </Button>
-    <Separator orientation="vertical" class="h-4"/>
   {/if}
 
+  <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
   <Button
     size="icon-xs"
     variant="outline"

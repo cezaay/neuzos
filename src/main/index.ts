@@ -507,6 +507,10 @@ const allowedEventKeybinds = {
     label: "Toggle Fullscreen",
     unique: true,
   },
+  "session_fullscreen_toggle": {
+    label: "Toggle Session Fullscreen",
+    unique: true,
+  },
   "close_focus_session": {
     label: "Close Focus Session",
     unique: true,
@@ -1591,6 +1595,7 @@ function checkKeybinds() {
   const globalOnlyKeybindEvents = [
     "ui.toggle_quest_log",
     "fullscreen_toggle",
+    "session_fullscreen_toggle",
     "close_focus_session",
     "toggle_keybinds",
     "layout_swap",
@@ -1685,6 +1690,9 @@ function dispatchKeybindEvent(bind: any) {
   switch (bind.event) {
     case "fullscreen_toggle":
       mainWindow?.setFullScreen(!mainWindow?.isFullScreen());
+      break;
+    case "session_fullscreen_toggle":
+      mainWindow?.webContents.send("event.session_fullscreen_toggle");
       break;
     case "close_focus_session":
       closeFocusSessionWindow();

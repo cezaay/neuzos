@@ -809,7 +809,7 @@
             <div class="space-y-0.5">
               <Label for="fullscreen-toggle" class="text-sm font-medium">Fullscreen Toggle</Label>
               <p class="text-xs text-muted-foreground">
-                Switch to Fullscreen Mode
+                Switch to Fullscreen Mode.
               </p>
             </div>
           </div>
@@ -828,7 +828,7 @@
             <div class="space-y-0.5">
               <Label for="keybind-toggle" class="text-sm font-medium">Keybind Toggle</Label>
               <p class="text-xs text-muted-foreground">
-                Enable/ Disable Keybinds & Switch Keybind Profiles
+                Enable/ Disable Keybinds & Switch Keybind Profiles.
               </p>
             </div>
           </div>

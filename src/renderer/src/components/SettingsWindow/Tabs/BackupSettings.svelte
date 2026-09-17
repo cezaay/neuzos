@@ -252,6 +252,7 @@
   const uniqueGlobalKeybindEvents = new Set([
     'ui.toggle_quest_log',
     'fullscreen_toggle',
+    'session_fullscreen_toggle',
     'close_focus_session',
     'toggle_keybinds',
     'layout_swap',
@@ -349,6 +350,7 @@
     const eventLabels: Record<string, string> = {
       'ui.toggle_quest_log': 'Toggle Quest Log',
       fullscreen_toggle: 'Toggle Fullscreen',
+      session_fullscreen_toggle: 'Toggle Session Fullscreen',
       close_focus_session: 'Close Focus Session',
       toggle_keybinds: 'Enable / Disable Keybinds',
       layout_swap: 'Swap to Previous Layout',

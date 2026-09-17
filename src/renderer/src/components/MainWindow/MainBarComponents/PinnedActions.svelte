@@ -1,7 +1,6 @@
 <script lang="ts">
   import {getContext, onMount} from 'svelte';
   import {Swords} from '@lucide/svelte';
-  import {Separator} from '$lib/components/ui/separator';
   import {Button} from '$lib/components/ui/button';
   import type {MainWindowState} from '$lib/types';
   import {getCooldownsContext} from '$lib/contexts/cooldownsContext';
@@ -265,7 +264,7 @@
 
 {#each pinnedActionsToShow as sessionPinned, sessionIndex (sessionPinned.sessionId)}
   {#if sessionIndex > 0}
-    <Separator orientation="vertical" class="h-4"/>
+    <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
   {/if}
   {#snippet sessionGroup()}
     {@const session = mainWindowState.config.sessions.find(s => s.id === sessionPinned.sessionId)}

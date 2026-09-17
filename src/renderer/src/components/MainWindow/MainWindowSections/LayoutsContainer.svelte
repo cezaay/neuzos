@@ -79,6 +79,8 @@
                   {@const runtimeSession = mainWindowState.sessions.find((s) => s.id === sessionId)}
                   {@const session = mainWindowState.config.sessions.find((s) => s.id === sessionId) ?? runtimeSession}
                   {#if session}
+                    {@const isLayoutFocused = mainWindowState.tabs.focusedLayoutSession?.layoutId === layout.id
+                      && mainWindowState.tabs.focusedLayoutSession?.sessionId === session.id}
                     <Resizable.Pane>
                       <NeuzClient
                         layoutId={layout.id}
@@ -86,6 +88,13 @@
                         session={session}
                         onUpdate={refreshInactiveLayoutVisibility}
                         onWebviewReady={refreshInactiveLayoutVisibility}
+                        {isLayoutFocused}
+                        onActivate={(sessionId) => {
+                          mainWindowState.tabs.activeLayoutSession = {
+                            layoutId: layout.id,
+                            sessionId,
+                          }
+                        }}
                         src={session.srcOverwrite || 'https://universe.flyff.com/play'}
                         userAgent={mainWindowState.config.userAgent}
                       />
