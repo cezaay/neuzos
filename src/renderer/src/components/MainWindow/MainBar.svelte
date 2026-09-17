@@ -341,6 +341,20 @@
     saveMutedLayoutState()
   }
 
+  const getLayoutSessionIds = (layoutId: string) => {
+    const layout = mainWindowState.layouts.find((candidate) => candidate.id === layoutId)
+    return layout?.rows.flatMap((row) => row.sessionIds) ?? []
+  }
+
+  const areAllLayoutSessionsMuted = (layoutId: string) => {
+    const sessionIds = getLayoutSessionIds(layoutId)
+    return sessionIds.length > 0 && sessionIds.every((sessionId) => isSessionMuted(layoutId, sessionId))
+  }
+
+  const isAnyLayoutSessionMuted = (layoutId: string) => {
+    return getLayoutSessionIds(layoutId).some((sessionId) => isSessionMuted(layoutId, sessionId))
+  }
+
   const stopAllSessions = (layoutId: string) => {
     for (const sessionId in mainWindowState.sessionsLayoutsRef) {
       mainWindowState.sessionsLayoutsRef[sessionId]?.layouts[layoutId]?.stopClient()
@@ -902,16 +916,20 @@
           </ContextMenu.Label>
           <ContextMenu.Separator class="mx-2"/>
           <div class="flex items-center justify-between gap-2">
-            <ContextMenu.Item class={cn("flex-1 items-center justify-center")}
-                              onclick={() => unmuteAllSessions(layTab.id)}>
-              <Volume2 class="h=4"/>
-            </ContextMenu.Item
-            >
-            <ContextMenu.Item class={cn("flex-1 items-center justify-center")}
-                              onclick={() => muteAllSessions(layTab.id)}>
-              <VolumeOff class="h=4"/>
-            </ContextMenu.Item
-            >
+            {#if isAnyLayoutSessionMuted(layTab.id)}
+              <ContextMenu.Item class={cn("flex-1 items-center justify-center")}
+                                onclick={() => unmuteAllSessions(layTab.id)}>
+                <Volume2 class="h-4"/>
+              </ContextMenu.Item
+              >
+            {/if}
+            {#if !areAllLayoutSessionsMuted(layTab.id)}
+              <ContextMenu.Item class={cn("flex-1 items-center justify-center")}
+                                onclick={() => muteAllSessions(layTab.id)}>
+                <VolumeOff class="h-4"/>
+              </ContextMenu.Item
+              >
+            {/if}
           </div>
           <ContextMenu.Separator class="mx-2"/>
           <div class="flex items-center justify-between gap-2">
