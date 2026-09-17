@@ -18,7 +18,7 @@ export const exportCategories: CategoryDefinition[] = [
   {
     id: 'general-settings',
     label: 'General Settings',
-    description: 'Autosave, Cache Cleanup, Window Settings, Title Bar Buttons, Fullscreen Behavior.',
+    description: 'Autosave, Cache Cleanup, Window Settings, Main Bar Buttons, Fullscreen Behavior.',
     enabled: true,
   },
   {

@@ -62,6 +62,7 @@
   let shortcutsEnabled = $state(true);
   let collapsedSessionGroupIds: Record<string, boolean> = $state({});
   let hasVisibleActionPins = $state(false);
+  let hasPinnedWidgetLaunchers = $state(false);
   let launcherTab: 'layouts' | 'sessions' = $state('layouts');
   let layoutLauncherSearchQuery = $state('');
   let sessionLauncherSearchQuery = $state('');
@@ -145,6 +146,19 @@
   const electronApi = getElectronContext();
   const questPanel = getQuestPanelContext();
   const uiActionContext = getUIActionContext();
+  const showFullscreenToggle = $derived(
+    mainWindowState.config.titleBarButtons.fullscreenToggle
+    || isFullscreen
+    || Boolean(mainWindowState.tabs.focusedLayoutSession)
+  );
+  const hasControlsAfterActionPins = $derived(
+    hasPinnedWidgetLaunchers
+    || (mainWindowState.config.titleBarButtons.widgetsToggle ?? true)
+    || mainWindowState.config.titleBarButtons.keybindToggle
+    || mainWindowState.config.titleBarButtons.darkModeToggle
+    || showFullscreenToggle
+  );
+  const hasMainBarControls = $derived(hasVisibleActionPins || hasControlsAfterActionPins);
 
   onMount(() => {
     uiActionContext.register('ui.toggle_quest_log', () => questPanel.toggle());
@@ -1034,12 +1048,16 @@
 
   <PinnedActions onHasPinnedActionsChange={(hasPinnedActions) => hasVisibleActionPins = hasPinnedActions}/>
 
-  {#if hasVisibleActionPins}
+  {#if hasVisibleActionPins && hasControlsAfterActionPins}
     <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
   {/if}
 
-  <PinnedWidgetLaunchers/>
-  <WidgetsButton/>
+  <PinnedWidgetLaunchers
+    onHasPinnedLaunchersChange={(hasPinnedLaunchers) => hasPinnedWidgetLaunchers = hasPinnedLaunchers}
+  />
+  {#if mainWindowState.config.titleBarButtons.widgetsToggle ?? true}
+    <WidgetsButton/>
+  {/if}
   {#if mainWindowState.config.titleBarButtons.keybindToggle}
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
@@ -1087,7 +1105,7 @@
     <ThemeToggle/>
   {/if}
 
-  {#if mainWindowState.config.titleBarButtons.fullscreenToggle || isFullscreen || mainWindowState.tabs.focusedLayoutSession}
+  {#if showFullscreenToggle}
     <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
     <Button size="icon-xs" variant="outline" onclick={() => {
         neuzosBridge.mainWindow.fullscreenToggle()
@@ -1096,7 +1114,9 @@
     </Button>
   {/if}
 
-  <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
+  {#if hasMainBarControls}
+    <div aria-hidden="true" class="h-7 w-px shrink-0 bg-border"></div>
+  {/if}
   <Button
     size="icon-xs"
     variant="outline"

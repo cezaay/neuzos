@@ -483,6 +483,7 @@ const defaultNeuzosConfig: any = {
     darkModeToggle: false,
     fullscreenToggle: true,
     keybindToggle: true,
+    widgetsToggle: true,
   },
   fullscreen: {
     hideTitleBarInMainWindow: true,

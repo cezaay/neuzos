@@ -5,7 +5,7 @@
   import {Label} from "$lib/components/ui/label";
   import {Button} from "$lib/components/ui/button";
   import {Separator} from "$lib/components/ui/separator";
-  import {Fullscreen, Keyboard, Moon, SquareArrowOutUpRight} from "@lucide/svelte";
+  import {Fullscreen, Keyboard, Moon, Puzzle, SquareArrowOutUpRight} from "@lucide/svelte";
 
   import {getContext, onMount} from "svelte";
   import {getElectronContext} from "$lib/contexts/electronContext";
@@ -92,7 +92,8 @@
     neuzosConfig.titleBarButtons = {
       darkModeToggle: false,
       fullscreenToggle: true,
-      keybindToggle: true
+      keybindToggle: true,
+      widgetsToggle: true
     };
   }
 
@@ -202,6 +203,13 @@
       neuzosConfig.titleBarButtons = {} as NonNullable<NeuzConfig['titleBarButtons']>;
     }
     neuzosConfig.titleBarButtons.keybindToggle = enabled;
+  }
+
+  function handleWidgetsToggle(enabled: boolean) {
+    if (!neuzosConfig.titleBarButtons) {
+      neuzosConfig.titleBarButtons = {} as NonNullable<NeuzConfig['titleBarButtons']>;
+    }
+    neuzosConfig.titleBarButtons.widgetsToggle = enabled;
   }
 
   // Handle auto-save toggle
@@ -836,6 +844,25 @@
             id="keybind-toggle"
             checked={neuzosConfig.titleBarButtons?.keybindToggle ?? true}
             onCheckedChange={handleKeybindToggle}
+          />
+        </div>
+
+        <div class="flex items-center justify-between py-2">
+          <div class="flex items-start gap-3">
+            <div class="h-9 w-9 shrink-0 rounded-md border bg-muted/60 flex items-center justify-center">
+              <Puzzle class="h-4 w-4"/>
+            </div>
+            <div class="space-y-0.5">
+              <Label for="widgets-toggle" class="text-sm font-medium">Widgets</Label>
+              <p class="text-xs text-muted-foreground">
+                Show/ Hide the Widget Menu.
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="widgets-toggle"
+            checked={neuzosConfig.titleBarButtons?.widgetsToggle ?? true}
+            onCheckedChange={handleWidgetsToggle}
           />
         </div>
       </div>

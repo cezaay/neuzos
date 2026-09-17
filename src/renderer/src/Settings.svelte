@@ -45,7 +45,8 @@
     titleBarButtons: {
       darkModeToggle: false,
       fullscreenToggle: true,
-      keybindToggle: true
+      keybindToggle: true,
+      widgetsToggle: true
     },
     autoSaveSettings: false,
     fullscreen: {

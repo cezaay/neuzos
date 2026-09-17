@@ -131,7 +131,8 @@
       titleBarButtons: {
         darkModeToggle: false,
         fullscreenToggle: true,
-        keybindToggle: true
+        keybindToggle: true,
+        widgetsToggle: true
       },
       fullscreen: {
         hideTitleBarInMainWindow: true,

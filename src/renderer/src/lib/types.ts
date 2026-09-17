@@ -243,6 +243,7 @@ export type NeuzConfig = {
     darkModeToggle: boolean;
     fullscreenToggle: boolean;
     keybindToggle: boolean;
+    widgetsToggle: boolean;
   };
   fullscreen?: {
     hideTitleBarInMainWindow: boolean;
