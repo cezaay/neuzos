@@ -5,6 +5,7 @@
   import type {MainWindowState} from '$lib/types';
   import {getCooldownsContext} from '$lib/contexts/cooldownsContext';
   import {getWidgetsContext} from '$lib/contexts/widgetsContext.svelte.js';
+  import {getNeuzosBridgeContext} from '$lib/contexts/neuzosBridgeContext';
   import {
     ACTION_PINS_VISIBILITY_CHANGED_EVENT,
     readActionPinsLatestPins,
@@ -21,6 +22,7 @@
   const mainWindowState = getContext<MainWindowState>('mainWindowState');
   const cooldownsContext = getCooldownsContext();
   const widgetsContext = getWidgetsContext();
+  const neuzosBridge = getNeuzosBridgeContext();
 
   const ACTION_PIN_WIDGET_TYPE = 'widget.builtin.action_pin';
 
@@ -238,17 +240,8 @@
   }
 
   function sendActionKeyToSession(sessionId: string, action: any) {
-    // Send the action key to all neuz clients for this session across all layouts
-    const sessionLayouts = mainWindowState.sessionsLayoutsRef[sessionId]?.layouts;
-    if (sessionLayouts) {
-      Object.keys(sessionLayouts).forEach(layoutId => {
-        const neuzClient = sessionLayouts[layoutId] as any;
-        if (neuzClient && neuzClient.sendKey && action.ingameKey) {
-          console.log("Sending key", action.ingameKey, "to session", sessionId, "in layout", layoutId);
-          neuzClient.sendKey(action.ingameKey);
-        }
-      });
-    }
+    if (!action.ingameKey) return;
+    neuzosBridge.sessions.sendKey(sessionId, action.ingameKey);
   }
 </script>
 

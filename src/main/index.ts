@@ -153,9 +153,10 @@ const viewerWindowConfigCache: Record<ViewerWindowType, ViewerWindowConfig> = {
 
 let exitCount: number = 0;
 let mainWindowShortcutsEnabled: boolean = true;
-let sessionWindowShortcutsEnabled: boolean = true;
+const sessionWindowShortcutStates = new WeakMap<BrowserWindow, boolean>();
 
 const runningSessionIds = new Set<string>();
+const runningSessionOwners = new Map<string, 'main' | number>();
 // Tracks sessions actively being deleted so session.clear_cache does not recreate their partition folder
 const deletingSessionIds = new Set<string>();
 
@@ -1341,6 +1342,7 @@ function createSessionWindow(mode: LaunchMode, sessionId: string): void {
 
   // Determine if we should start fullscreen
   const startFullscreen = mode === 'focus_fullscreen';
+  const startSessionImmediately = !runningSessionIds.has(sessionId);
 
   // Create the session window
   const window = new BrowserWindow({
@@ -1360,14 +1362,17 @@ function createSessionWindow(mode: LaunchMode, sessionId: string): void {
       zoomFactor: 1.0,
     }
   });
+  const windowWebContentsId = window.webContents.id;
   sessionWindow = window;
   sessionWindows.set(sessionId, window);
 
+  if (startSessionImmediately) {
+    runningSessionIds.add(sessionId);
+    runningSessionOwners.set(sessionId, windowWebContentsId);
+  }
+
   // Exit behavior similar to main window
   window.on("close", (event) => {
-    // Always unregister shortcuts when session window is closing
-    globalShortcut.unregisterAll();
-
     if (exitCount < 2) {
       event.preventDefault();
       console.log("Prevented manual close");
@@ -1407,19 +1412,22 @@ function createSessionWindow(mode: LaunchMode, sessionId: string): void {
   window.on("resize", notifyRuntimeWindowBoundsChanged);
 
   window.on("closed", () => {
-    // Ensure shortcuts are unregistered when session window is destroyed
-    globalShortcut.unregisterAll();
+    if (runningSessionOwners.get(sessionId) === windowWebContentsId) {
+      runningSessionOwners.delete(sessionId);
+      runningSessionIds.delete(sessionId);
+    }
     sessionWindows.delete(sessionId);
     if (sessionWindow === window) {
       sessionWindow = null;
     }
     notifyRuntimeWindowBoundsChanged();
+    setImmediate(registerShortcutsForFocusedWindow);
   });
 
   window.on("focus", () => {
     sessionWindow = window;
     notifyRuntimeWindowBoundsChanged();
-    registerSessionKeybinds(mode);
+    registerSessionKeybinds(mode, window);
   });
 
   // Track fullscreen state changes
@@ -1440,7 +1448,8 @@ function createSessionWindow(mode: LaunchMode, sessionId: string): void {
   (window as any).sessionData = {
     mode,
     sessionId,
-    sessionConfig: sessionData
+    sessionConfig: sessionData,
+    started: startSessionImmediately,
   };
 
   // Load the session HTML
@@ -1538,6 +1547,7 @@ function createMainWindow(): void {
       }
     }
     viewerWindows.clear();
+    setImmediate(registerShortcutsForFocusedWindow);
   });
 
   mainWindow.on("focus", () => {
@@ -1641,15 +1651,145 @@ function checkKeybinds() {
   })
 }
 
-function closeFocusSessionWindow() {
-  const mode = (sessionWindow as any)?.sessionData?.mode as LaunchMode | undefined;
+function closeFocusSessionWindow(targetWindow: BrowserWindow | null = sessionWindow) {
+  const mode = (targetWindow as any)?.sessionData?.mode as LaunchMode | undefined;
   if (mode !== 'focus' && mode !== 'focus_fullscreen') {
     return;
   }
 
   globalShortcut.unregisterAll();
-  sessionWindow?.destroy();
-  sessionWindow = null;
+  targetWindow?.destroy();
+  if (sessionWindow === targetWindow) {
+    sessionWindow = null;
+  }
+}
+
+function forEachSessionWindow(callback: (window: BrowserWindow) => void): void {
+  for (const window of sessionWindows.values()) {
+    if (!window.isDestroyed()) {
+      callback(window);
+    }
+  }
+}
+
+function broadcastToSessionWindows(channel: string, ...args: any[]): void {
+  forEachSessionWindow((window) => window.webContents.send(channel, ...args));
+}
+
+function getSessionWindowForWebContents(contents: Electron.WebContents): BrowserWindow | null {
+  const directWindow = BrowserWindow.fromWebContents(contents);
+  if (directWindow) return directWindow;
+
+  const hostContents = (contents as any).hostWebContents as Electron.WebContents | undefined;
+  return hostContents ? BrowserWindow.fromWebContents(hostContents) : null;
+}
+
+function getSessionKeybinds(): any[] {
+  const activeProfile = neuzosConfig?.keyBindProfiles?.find(
+    (profile: any) => profile.id === neuzosConfig.activeKeyBindProfileId
+  );
+  return [...(neuzosConfig?.keyBinds ?? []), ...(activeProfile?.keybinds ?? [])];
+}
+
+function isSessionKeybindSupported(bind: any, mode: LaunchMode): boolean {
+  switch (bind?.event) {
+    case "fullscreen_toggle":
+    case "toggle_keybinds":
+    case "send_session_action":
+    case "send_to_receiver":
+      return true;
+    case "close_focus_session":
+      return mode === 'focus' || mode === 'focus_fullscreen';
+    default:
+      return false;
+  }
+}
+
+function sendKeyToStandaloneSession(sessionId: string, ingameKey: string): boolean {
+  const targetWindow = sessionWindows.get(sessionId);
+  if (!targetWindow || targetWindow.isDestroyed() || !ingameKey) {
+    return false;
+  }
+  if (runningSessionOwners.get(sessionId) !== targetWindow.webContents.id) {
+    return false;
+  }
+
+  targetWindow.webContents.send("event.send_key", ingameKey);
+  return true;
+}
+
+async function stopRunningSessionOwner(sessionId: string, owner: 'main' | number): Promise<void> {
+  const ownerWindow = owner === 'main'
+    ? mainWindow
+    : sessionWindows.get(sessionId) ?? null;
+  if (!ownerWindow || ownerWindow.isDestroyed()) return;
+
+  const ownerWebContentsId = ownerWindow.webContents.id;
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      ipcMain.removeListener('event.stop_session_ack', onStopped);
+      resolve();
+    };
+    const onStopped = (event: Electron.IpcMainEvent, stoppedSessionId: string) => {
+      if (event.sender.id === ownerWebContentsId && stoppedSessionId === sessionId) {
+        finish();
+      }
+    };
+    const timeoutId = setTimeout(finish, 5000);
+
+    ipcMain.on('event.stop_session_ack', onStopped);
+    ownerWindow.webContents.send('event.stop_session', sessionId);
+  });
+}
+
+function dispatchSessionKeybindEvent(bind: any, targetWindow: BrowserWindow, mode: LaunchMode): void {
+  switch (bind.event) {
+    case "fullscreen_toggle":
+      if (mode === 'session') {
+        targetWindow.setFullScreen(!targetWindow.isFullScreen());
+      } else if (mode === 'focus_fullscreen' && !targetWindow.isFullScreen()) {
+        targetWindow.setFullScreen(true);
+      }
+      break;
+    case "close_focus_session":
+      closeFocusSessionWindow(targetWindow);
+      break;
+    case "toggle_keybinds": {
+      const now = Date.now();
+      if (now - lastKeybindToggleAt < 500) return;
+      lastKeybindToggleAt = now;
+      setSessionWindowShortcutsEnabled(
+        targetWindow,
+        !areSessionWindowShortcutsEnabled(targetWindow)
+      );
+      break;
+    }
+    case "send_session_action": {
+      const [sessionId, actionId] = bind.args ?? [];
+      if (!sessionId || !actionId) return;
+      const action = neuzosConfig?.sessionActions
+        ?.find((entry: any) => entry.sessionId === sessionId)
+        ?.actions?.find((entry: any) => entry.id === actionId);
+      if (action?.ingameKey && sendKeyToStandaloneSession(sessionId, action.ingameKey)) {
+        return;
+      }
+      mainWindow?.webContents.send("event.send_session_action", sessionId, actionId);
+      break;
+    }
+    case "send_to_receiver": {
+      const ingameKey = bind.args?.[0];
+      const receiverId = neuzosConfig?.syncReceiverSessionId;
+      if (!ingameKey || !receiverId) return;
+      if (!sendKeyToStandaloneSession(receiverId, ingameKey)) {
+        mainWindow?.webContents.send("event.send_to_receiver", ingameKey);
+      }
+      break;
+    }
+  }
 }
 
 function setMainWindowShortcutsEnabled(enabled: boolean) {
@@ -1661,6 +1801,22 @@ function setMainWindowShortcutsEnabled(enabled: boolean) {
     registerKeybindToggleShortcut();
   }
   mainWindow?.webContents.send("event.shortcuts_state_changed", enabled);
+}
+
+function areSessionWindowShortcutsEnabled(targetWindow: BrowserWindow | null): boolean {
+  return targetWindow ? (sessionWindowShortcutStates.get(targetWindow) ?? true) : true;
+}
+
+function setSessionWindowShortcutsEnabled(targetWindow: BrowserWindow, enabled: boolean) {
+  sessionWindowShortcutStates.set(targetWindow, enabled);
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  const sessionData = (targetWindow as any)?.sessionData;
+
+  if (focusedWindow === targetWindow && sessionData?.mode) {
+    registerSessionKeybinds(sessionData.mode, targetWindow);
+  }
+
+  targetWindow.webContents.send("event.shortcuts_state_changed", enabled);
 }
 
 function registerKeybindToggleShortcut() {
@@ -1722,13 +1878,24 @@ function dispatchKeybindEvent(bind: any) {
         mainWindow?.webContents.send("event.layout_switch", ...(bind.args ?? []));
       break;
     case "send_session_action":
-      if (bind.args?.length > 1)
-        mainWindow?.webContents.send("event.send_session_action", ...(bind.args ?? []));
+      if (bind.args?.length > 1) {
+        const [sessionId, actionId] = bind.args;
+        const action = neuzosConfig?.sessionActions
+          ?.find((entry: any) => entry.sessionId === sessionId)
+          ?.actions?.find((entry: any) => entry.id === actionId);
+        if (!action?.ingameKey || !sendKeyToStandaloneSession(sessionId, action.ingameKey)) {
+          mainWindow?.webContents.send("event.send_session_action", sessionId, actionId);
+        }
+      }
       break;
-    case "send_to_receiver":
-      if (bind.args?.length > 0)
-        mainWindow?.webContents.send("event.send_to_receiver", bind.args[0]);
+    case "send_to_receiver": {
+      const ingameKey = bind.args?.[0];
+      const receiverId = neuzosConfig?.syncReceiverSessionId;
+      if (ingameKey && receiverId && !sendKeyToStandaloneSession(receiverId, ingameKey)) {
+        mainWindow?.webContents.send("event.send_to_receiver", ingameKey);
+      }
       break;
+    }
     case "custom_event":
       if (bind.args?.length > 1) {
         // Allowlist: only permit known safe custom renderer event channel names
@@ -1843,54 +2010,47 @@ function registerKeybinds() {
   });
 }
 
-function registerSessionKeybinds(mode: LaunchMode) {
+function registerSessionKeybinds(mode: LaunchMode, targetWindow: BrowserWindow | null = sessionWindow) {
   globalShortcut.unregisterAll();
 
-  // Only register shortcuts if they are enabled for session window
-  if (!sessionWindowShortcutsEnabled) {
+  if (!targetWindow || targetWindow.isDestroyed()) return;
+
+  const allBinds = getSessionKeybinds();
+  const registeredKeys = new Set<string>();
+
+  allBinds.forEach((bind) => {
+    if (!bind?.key || !canRegisterGlobalShortcutKey(bind.key)) return;
+    if (!isSessionKeybindSupported(bind, mode)) return;
+    if (!areSessionWindowShortcutsEnabled(targetWindow) && bind.event !== "toggle_keybinds") return;
+
+    const normalizedKey = String(bind.key).toLowerCase();
+    if (registeredKeys.has(normalizedKey)) return;
+
+    try {
+      if (globalShortcut.register(bind.key, () => dispatchSessionKeybindEvent(bind, targetWindow, mode))) {
+        registeredKeys.add(normalizedKey);
+      }
+    } catch (e) {
+      console.warn("Skipping invalid session keybind:", bind.key, bind.event, e);
+    }
+  });
+}
+
+function registerShortcutsForFocusedWindow(): void {
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  if (focusedWindow === mainWindow) {
+    registerKeybinds();
     return;
   }
 
-  // Find fullscreen keybind
-  const fullscreenBind = neuzosConfig.keyBinds.find((bind: any) => bind.event === "fullscreen_toggle");
-  const closeFocusSessionBind = neuzosConfig.keyBinds.find((bind: any) => bind.event === "close_focus_session");
-
-  if (!fullscreenBind && !closeFocusSessionBind && mode !== 'focus' && mode !== 'focus_fullscreen') {
+  const focusedSessionData = (focusedWindow as any)?.sessionData;
+  if (focusedWindow && focusedSessionData?.mode) {
+    sessionWindow = focusedWindow;
+    registerSessionKeybinds(focusedSessionData.mode, focusedWindow);
     return;
   }
 
-  try {
-    if ((mode === 'focus' || mode === 'focus_fullscreen') && closeFocusSessionBind?.key) {
-      globalShortcut.register(closeFocusSessionBind.key, () => {
-        closeFocusSessionWindow();
-      });
-    }
-
-    switch (mode) {
-      case 'session':
-        // Allow fullscreen toggle
-        if (fullscreenBind?.key) globalShortcut.register(fullscreenBind.key, () => {
-          sessionWindow?.setFullScreen(!sessionWindow?.isFullScreen());
-        });
-        break;
-      case 'focus':
-        // Prevent fullscreen
-        if (fullscreenBind?.key) globalShortcut.register(fullscreenBind.key, () => {
-          // Do nothing - prevent fullscreen
-        });
-        break;
-      case 'focus_fullscreen':
-        // Prevent removing fullscreen
-        if (fullscreenBind?.key) globalShortcut.register(fullscreenBind.key, () => {
-          if (!sessionWindow?.isFullScreen()) {
-            sessionWindow?.setFullScreen(true);
-          }
-        });
-        break;
-    }
-  } catch (e) {
-    console.error("Failed to register session keybind:", e);
-  }
+  globalShortcut.unregisterAll();
 }
 
 (async () => {
@@ -1949,9 +2109,18 @@ function registerSessionKeybinds(mode: LaunchMode) {
         const allBinds: any[] = [...(neuzosConfig?.keyBinds ?? []), ...(activeProfile?.keybinds ?? [])];
         const bind = allBinds.find((b: any) => b.key && b.key.toLowerCase() === key);
         if (bind) {
-          if (!mainWindowShortcutsEnabled && bind.event !== "toggle_keybinds") {
+          const ownerWindow = getSessionWindowForWebContents(wc);
+          const sessionData = (ownerWindow as any)?.sessionData;
+
+          if (ownerWindow && sessionData?.mode) {
+            if (!isSessionKeybindSupported(bind, sessionData.mode)) return;
+            if (!areSessionWindowShortcutsEnabled(ownerWindow) && bind.event !== "toggle_keybinds") return;
+            event.preventDefault();
+            dispatchSessionKeybindEvent(bind, ownerWindow, sessionData.mode);
             return;
           }
+
+          if (!mainWindowShortcutsEnabled && bind.event !== "toggle_keybinds") return;
           event.preventDefault();
           dispatchKeybindEvent(bind);
         }
@@ -2097,6 +2266,35 @@ function registerSessionKeybinds(mode: LaunchMode) {
       }
     });
 
+    ipcMain.handle("session_window.start", async (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const sessionId = (win as any)?.sessionData?.sessionId as string | undefined;
+      if (!win || !sessionId) return {success: false};
+
+      const currentOwner = runningSessionOwners.get(sessionId);
+      if (currentOwner !== undefined && currentOwner !== win.webContents.id) {
+        await stopRunningSessionOwner(sessionId, currentOwner);
+        if (runningSessionOwners.get(sessionId) === currentOwner) {
+          runningSessionOwners.delete(sessionId);
+          runningSessionIds.delete(sessionId);
+        }
+      }
+
+      runningSessionIds.add(sessionId);
+      runningSessionOwners.set(sessionId, win.webContents.id);
+      return {success: true};
+    });
+
+    ipcMain.on("session_window.stop", (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const sessionId = (win as any)?.sessionData?.sessionId as string | undefined;
+      if (!win || !sessionId) return;
+      if (runningSessionOwners.get(sessionId) === win.webContents.id) {
+        runningSessionOwners.delete(sessionId);
+        runningSessionIds.delete(sessionId);
+      }
+    });
+
     ipcMain.on("session_window.close", (event) => {
       globalShortcut.unregisterAll();
       BrowserWindow.fromWebContents(event.sender)?.destroy();
@@ -2140,15 +2338,9 @@ function registerSessionKeybinds(mode: LaunchMode) {
     });
 
     ipcMain.on("session_window.toggle_shortcuts", (event, enabled: boolean) => {
-      sessionWindowShortcutsEnabled = enabled;
       const win = BrowserWindow.fromWebContents(event.sender);
-      const mode = (win as any)?.sessionData?.mode;
-      if (enabled && mode) {
-        registerSessionKeybinds(mode);
-      } else {
-        globalShortcut.unregisterAll();
-      }
-      win?.webContents.send("event.shortcuts_state_changed", enabled);
+      if (!(win as any)?.sessionData) return;
+      setSessionWindowShortcutsEnabled(win!, enabled);
     });
 
     ipcMain.on('viewer_window.open', async (_event, type: ViewerWindowType) => {
@@ -2250,10 +2442,11 @@ function registerSessionKeybinds(mode: LaunchMode) {
       });
     });
 
-    ipcMain.handle("shortcuts.get_state", () => {
+    ipcMain.handle("shortcuts.get_state", (event) => {
+      const requestingWindow = BrowserWindow.fromWebContents(event.sender);
       return {
         mainWindow: mainWindowShortcutsEnabled,
-        sessionWindow: sessionWindowShortcutsEnabled,
+        sessionWindow: areSessionWindowShortcutsEnabled(requestingWindow),
       };
     });
 
@@ -2315,18 +2508,42 @@ function registerSessionKeybinds(mode: LaunchMode) {
     });
 
     ipcMain.on("session.stop", (event, sessionId: string) => {
+      const owner = runningSessionOwners.get(sessionId);
       runningSessionIds.delete(sessionId);
+      runningSessionOwners.delete(sessionId);
+
+      if (typeof owner === 'number') {
+        const standaloneWindow = sessionWindows.get(sessionId);
+        standaloneWindow?.webContents.send("event.stop_session", sessionId);
+        return;
+      }
+
       const win = BrowserWindow.fromWebContents(event.sender);
       win?.webContents.send("event.stop_session", sessionId);
     });
 
     ipcMain.on("session.start", (event, sessionId: string, layoutId: string) => {
+      const currentOwner = runningSessionOwners.get(sessionId);
+      if (typeof currentOwner === 'number') {
+        console.warn(`[Main Window] Session "${sessionId}" is already running in a Session Window.`);
+        return;
+      }
+
       runningSessionIds.add(sessionId);
+      runningSessionOwners.set(sessionId, 'main');
       const win = BrowserWindow.fromWebContents(event.sender);
       win?.webContents.send("event.start_session", sessionId, layoutId);
     });
 
+    ipcMain.on("session.send_key", (_event, sessionId: string, ingameKey: string) => {
+      if (typeof sessionId !== 'string' || typeof ingameKey !== 'string' || !ingameKey) return;
+      if (!sendKeyToStandaloneSession(sessionId, ingameKey)) {
+        mainWindow?.webContents.send("event.send_key_to_session", sessionId, ingameKey);
+      }
+    });
+
     ipcMain.on("session.restart", (event, sessionId: string, layoutId: string) => {
+      if (typeof runningSessionOwners.get(sessionId) === 'number') return;
       const win = BrowserWindow.fromWebContents(event.sender);
       win?.webContents.send("event.stop_session", sessionId);
       win?.webContents.send("event.start_session", sessionId, layoutId);
@@ -2433,6 +2650,7 @@ function registerSessionKeybinds(mode: LaunchMode) {
         const graceMs = stopAckReceived ? 1200 : 4000;
         await new Promise(resolve => setTimeout(resolve, graceMs));
         runningSessionIds.delete(sessionId);
+        runningSessionOwners.delete(sessionId);
 
         // Delete partition folders with retries to handle delayed handle release.
         // Electron partitions may be stored under Partitions/<id> (current) or
@@ -2514,9 +2732,15 @@ function registerSessionKeybinds(mode: LaunchMode) {
 
       let stoppedBeforeClone = false;
       if (runningSessionIds.has(sourceId)) {
-        mainWindow?.webContents.send('event.stop_session', sourceId);
+        const owner = runningSessionOwners.get(sourceId);
+        if (typeof owner === 'number') {
+          sessionWindows.get(sourceId)?.webContents.send('event.stop_session', sourceId);
+        } else {
+          mainWindow?.webContents.send('event.stop_session', sourceId);
+        }
         await new Promise(resolve => setTimeout(resolve, 5000));
         runningSessionIds.delete(sourceId);
+        runningSessionOwners.delete(sourceId);
         stoppedBeforeClone = true;
       }
 
@@ -2586,10 +2810,12 @@ function registerSessionKeybinds(mode: LaunchMode) {
       saveConfig(parsed);
       neuzosConfig = parsed;
       checkKeybinds();
-      registerKeybinds();
+      registerShortcutsForFocusedWindow();
       notifyUiZoomChanged();
-      mainWindow?.webContents?.send("event.config_changed", config);
-      sessionLauncherWindow?.webContents?.send("event.config_changed", config);
+      const serializedConfig = JSON.stringify(neuzosConfig);
+      mainWindow?.webContents?.send("event.config_changed", serializedConfig);
+      sessionLauncherWindow?.webContents?.send("event.config_changed", serializedConfig);
+      broadcastToSessionWindows("event.config_changed", serializedConfig);
     });
 
     ipcMain.handle("config.save_silent", async (_, config: any) => {
@@ -2618,6 +2844,7 @@ function registerSessionKeybinds(mode: LaunchMode) {
       mainWindow?.webContents?.send("event.config_patch", allowedPatch);
       settingsWindow?.webContents?.send("event.config_patch", allowedPatch);
       sessionLauncherWindow?.webContents?.send("event.config_changed");
+      broadcastToSessionWindows("event.config_patch", allowedPatch);
     });
 
     ipcMain.handle("config.export", async (event, payload: ConfigExportPayloadV2) => {
@@ -3278,6 +3505,7 @@ function registerSessionKeybinds(mode: LaunchMode) {
         neuzosConfig.syncReceiverSessionId = sessionId ?? null;
         saveConfig(neuzosConfig);
         mainWindow?.webContents?.send("event.sync_receiver_changed", sessionId ?? null);
+        broadcastToSessionWindows("event.sync_receiver_changed", sessionId ?? null);
       } catch (err) {
         console.error("Failed to update sync receiver:", err);
       }
@@ -3289,9 +3517,10 @@ function registerSessionKeybinds(mode: LaunchMode) {
 
       neuzosConfig.activeKeyBindProfileId = profileId;
       saveConfig(neuzosConfig);
-      registerKeybinds();
+      registerShortcutsForFocusedWindow();
       mainWindow?.webContents?.send("event.active_keybind_profile_changed", profileId);
       settingsWindow?.webContents?.send("event.active_keybind_profile_changed", profileId);
+      broadcastToSessionWindows("event.active_keybind_profile_changed", profileId);
 
       return { success: true, profileId };
     });
@@ -3534,18 +3763,14 @@ function registerSessionKeybinds(mode: LaunchMode) {
   });
 
   app.on("browser-window-blur", () => {
-    // Unregister shortcuts when any window loses focus to prevent conflicts
-    globalShortcut.unregisterAll();
+    // Focus transitions between NeuzOS windows emit blur/focus very close
+    // together. Resolve the final focused window on the next event-loop turn
+    // so a late blur cannot remove the newly registered shortcuts.
+    setImmediate(registerShortcutsForFocusedWindow);
   });
 
   app.on("browser-window-focus", () => {
-    // Re-register appropriate shortcuts when any window gains focus
-    const focusedWindow = BrowserWindow.getFocusedWindow();
-    if (focusedWindow === mainWindow) {
-      registerKeybinds();
-    } else if (focusedWindow === sessionWindow && (sessionWindow as any)?.sessionData) {
-      registerSessionKeybinds((sessionWindow as any).sessionData.mode);
-    }
+    setImmediate(registerShortcutsForFocusedWindow);
   });
 
   app.on("will-quit", () => {

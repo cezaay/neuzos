@@ -419,6 +419,10 @@
     activeClient.sendKey(ingameKey)
   }
 
+  listen('event.send_key_to_session', (_, sessionId: string, ingameKey: string) => {
+    sendKeyToReceiverSession(sessionId, ingameKey)
+  })
+
   listen('event.send_to_receiver', (_, ingameKey: string) => {
     const receiverId = mainWindowState.config.syncReceiverSessionId
     if (!receiverId) return

@@ -108,6 +108,9 @@ export const neuzosBridge = {
     start: (sessionId: string, layoutId: string) => {
       electronApi?.send("session.start", sessionId, layoutId);
     },
+    sendKey: (sessionId: string, ingameKey: string) => {
+      electronApi?.send("session.send_key", sessionId, ingameKey);
+    },
     restart: (sessionId: string, layoutId: string) => {
       electronApi?.send("session.restart", sessionId, layoutId);
     },

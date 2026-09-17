@@ -6,7 +6,6 @@
     X,
     Plus,
     RefreshCcw,
-    VolumeX,
     Volume2,
     VolumeOff,
     Square,
@@ -969,7 +968,7 @@
                         <RadioTower class="w-4 h-4"/>
                       {/if}
                       {#if isSessionMuted(layoutId, sessionId)}
-                        <VolumeX class="w-4 h-4"/>
+                        <VolumeOff class="w-4 h-4"/>
                       {/if}
                     </div>
                   </div>
