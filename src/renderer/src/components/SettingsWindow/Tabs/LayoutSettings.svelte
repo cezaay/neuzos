@@ -37,48 +37,10 @@
   import {getContext, onMount} from "svelte";
   import {Button} from "$lib/components/ui/button";
   import {Switch} from "$lib/components/ui/switch";
-
-  type LayoutIconOption = {
-    slug: string
-    label: string
-  }
-
-  type LayoutIconGroup = {
-    heading: string
-    icons: LayoutIconOption[]
-  }
-
-  const numberedIconOptions = (folder: string, prefix: string, label: string, start: number, end: number) => {
-    return Array.from({length: end - start + 1}, (_, index) => {
-      const value = start + index
-      return {
-        slug: `${folder}/${prefix}${value}`,
-        label: `${label} ${value}`
-      }
-    })
-  }
-
-  const petIconOptions = (name: string, label: string, includeSClass = true): LayoutIconOption[] => {
-    const icons = [{slug: `pets/pet_${name}`, label}]
-    if (includeSClass) {
-      icons.push({slug: `pets/pet_${name}_s`, label: `${label} S Class`})
-    }
-    return icons
-  }
-
-  const colorIconOptions = (prefix: string, label: string, colors: string[]): LayoutIconOption[] => {
-    return colors.map((color) => ({
-      slug: `misc/${prefix}_${color}`,
-      label: `${label} ${color.charAt(0).toUpperCase()}${color.slice(1)}`
-    }))
-  }
-
-  const pieceIconOptions = (colors: string[]): LayoutIconOption[] => {
-    return colors.map((color) => ({
-      slug: `misc/piece_${color}`,
-      label: `Piece ${color.charAt(0).toUpperCase()}${color.slice(1)}`
-    }))
-  }
+  import {
+    extendedLayoutIconGroups,
+    type LayoutIconGroup
+  } from "$lib/data/layoutIcons";
 
   const layoutIconGroups: LayoutIconGroup[] = [
     {
@@ -112,64 +74,7 @@
         {slug: 'jobs/mentalist', label: 'Mentalist'}
       ]
     },
-    {
-      heading: 'Master / Hero Badges',
-      icons: [
-        {slug: 'levels/master_1', label: 'Master Lv. 70'},
-        {slug: 'levels/master_2', label: 'Master Lv. 80'},
-        {slug: 'levels/master_3', label: 'Master Lv. 90'},
-        {slug: 'levels/master_4', label: 'Master Lv. 100'},
-        {slug: 'levels/master_5', label: 'Master Lv. 110'},
-        {slug: 'levels/master_6', label: 'Master Lv. 120'},
-        {slug: 'levels/hero_1', label: 'Hero Lv. 125'},
-        {slug: 'levels/hero_2', label: 'Hero Lv. 140'},
-        {slug: 'levels/hero_3', label: 'Hero Lv. 160'},
-        {slug: 'levels/hero_4', label: 'Hero Lv. 180'}
-      ]
-    },
-    {
-      heading: 'Pet Levels',
-      icons: numberedIconOptions('pets', 'level_', 'Level', 1, 9)
-    },
-    {
-      heading: 'Pets',
-      icons: [
-        {slug: 'misc/egg', label: 'Egg'},
-        ...petIconOptions('angel', 'Angel'),
-        ...petIconOptions('crab', 'Crab'),
-        ...petIconOptions('dragon', 'Dragon'),
-        ...petIconOptions('fox', 'Fox'),
-        ...petIconOptions('griffin', 'Griffin'),
-        ...petIconOptions('lion', 'Lion'),
-        ...petIconOptions('rabbit', 'Rabbit'),
-        ...petIconOptions('tiger', 'Tiger'),
-        ...petIconOptions('unicorn', 'Unicorn'),
-        ...petIconOptions('whitelion', 'White Lion', false)
-      ]
-    },
-    {
-      heading: 'Other Icons',
-      icons: [
-        {slug: 'neuzos_pang', label: 'NeuzOS'},
-        {slug: 'misc/browser', label: 'Browser'},
-        {slug: 'misc/neuz_hat', label: 'Neuz'},
-        {slug: 'misc/fwc', label: 'FWC'},
-        {slug: 'misc/star', label: 'Star'},
-        {slug: 'misc/item', label: 'Item'},
-        {slug: 'misc/bag', label: 'Bag'},
-        {slug: 'misc/pet_food', label: 'Pet Food'},
-        {slug: 'misc/battlepass', label: 'Battle Pass'},
-        {slug: 'misc/perin', label: 'Perin'},
-        {slug: 'misc/diamond_black', label: 'Diamond Black'},
-        {slug: 'misc/diamond', label: 'Diamond'},
-        ...numberedIconOptions('misc', 'pickup_pet_buff_', 'Pickup Pet Buff', 1, 3),
-        ...colorIconOptions('jewel', 'Jewel', ['black', 'green', 'purple', 'red', 'yellow']),
-        ...numberedIconOptions('misc', 'card', 'Card', 1, 10),
-        ...colorIconOptions('heart', 'Heart', ['blue', 'cyan', 'green', 'red', 'yellow']),
-        ...colorIconOptions('element', 'Element', ['white', 'blue', 'green', 'purple', 'red', 'yellow']),
-        ...pieceIconOptions(['blue', 'cyan', 'gold', 'green', 'grey', 'red', 'yellow'])
-      ]
-    }
+    ...extendedLayoutIconGroups
   ];
 
   const neuzosConfig = getContext<NeuzConfig>("neuzosConfig");
