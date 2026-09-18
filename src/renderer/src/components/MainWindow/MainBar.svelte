@@ -28,7 +28,8 @@
     Columns2,
     CircleQuestionMark,
     Search,
-    ArrowDown
+    ArrowDown,
+    ExternalLink
   } from '@lucide/svelte'
   import {getContext, onDestroy, onMount} from "svelte";
   import type {MainWindowState, NeuzLayout, NeuzSession, NeuzSessionGroup} from "$lib/types";
@@ -975,6 +976,13 @@
                   </div>
                 </ContextMenu.SubTrigger>
                 <ContextMenu.SubContent class="w-48">
+                  <ContextMenu.Item onclick={() => launchSession(sessionId, 'session')}>
+                    <div class="flex items-center gap-2">
+                      <ExternalLink class="h-4"/>
+                      Pop-Out Session
+                    </div>
+                  </ContextMenu.Item>
+                  <ContextMenu.Separator/>
                   <ContextMenu.Item
                     onclick={() => isSessionMuted(layoutId, sessionId) ? unmuteSession(layoutId,sessionId) : muteSession(layoutId, sessionId)}>
                     <div class="flex items-center gap-2">
