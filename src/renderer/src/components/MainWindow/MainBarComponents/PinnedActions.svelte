@@ -25,6 +25,7 @@
   const neuzosBridge = getNeuzosBridgeContext();
 
   const ACTION_PIN_WIDGET_TYPE = 'widget.builtin.action_pin';
+  const ACTION_PAD_WIDGET_TYPE = 'widget.builtin.action_pad';
 
   let didInitPinPersistence = $state(false);
   let initialSavedLatestPinSessionIds: string[] = [];
@@ -52,6 +53,19 @@
   function formatActionTooltip(action: any): string {
     const key = action.ingameKey ? String(action.ingameKey).toUpperCase() : 'Not set';
     return `${action.label} | Key: ${key} | Casttime: ${action.castTime}s | Cooldown: ${action.cooldown}s`;
+  }
+
+  function openActionPad(sessionId: string) {
+    const existingActionPad = widgetsContext
+      .getWidgetsByType(ACTION_PAD_WIDGET_TYPE)
+      .find(widget => widget.data?.sessionId === sessionId);
+
+    if (existingActionPad) {
+      widgetsContext.showWidget(existingActionPad.id);
+      return;
+    }
+
+    widgetsContext.createWidget(ACTION_PAD_WIDGET_TYPE, {sessionId});
   }
 
   function getSessionsWithActions(): string[] {
@@ -147,14 +161,12 @@
 
       if (sessionActions) {
         const pinnedActions = sessionActions.actions.filter(a => a.pinned);
-        if (pinnedActions.length > 0) {
-          const session = mainWindowState.config.sessions.find(s => s.id === sessionId);
-          result.push({
-            sessionId,
-            sessionLabel: session?.label || 'Unknown',
-            actions: pinnedActions
-          });
-        }
+        const session = mainWindowState.config.sessions.find(s => s.id === sessionId);
+        result.push({
+          sessionId,
+          sessionLabel: session?.label || 'Unknown',
+          actions: pinnedActions
+        });
       }
     });
 
@@ -263,13 +275,22 @@
     {@const session = mainWindowState.config.sessions.find(s => s.id === sessionPinned.sessionId)}
     <div class="flex items-center gap-1 px-1.5 rounded-md bg-accent/30">
       {#if session}
-        <div class="relative size-5 p-0 flex items-center justify-center" title="{sessionPinned.sessionLabel}">
+        <button
+          type="button"
+          class="relative flex size-5 cursor-default items-center justify-center rounded p-0 transition-shadow hover:border-primary/70 hover:ring-1 hover:ring-primary/50 hover:shadow-sm hover:shadow-primary/10"
+          title={sessionPinned.sessionLabel}
+          ondblclick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openActionPad(sessionPinned.sessionId);
+          }}
+        >
           <img
             src="icons/{session.icon.slug}.png"
             alt={sessionPinned.sessionLabel}
             class="h-full w-full object-contain"
           />
-        </div>
+        </button>
       {/if}
       {#each sessionPinned.actions as action (action.id)}
       {@const state = getActionStateReactive(sessionPinned.sessionId, action.id)}
