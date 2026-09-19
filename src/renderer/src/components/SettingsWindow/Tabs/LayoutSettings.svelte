@@ -22,7 +22,8 @@
     Grid2x2Check,
     SquarePen,
     List,
-    Grid3X3
+    Grid3X3,
+    Sparkles
   } from "@lucide/svelte";
 
   import {Input} from "$lib/components/ui/input";
@@ -30,7 +31,15 @@
   import * as Command from "$lib/components/ui/command";
   import * as Popover from "$lib/components/ui/popover";
   import {Separator} from "$lib/components/ui/separator";
-  import {readSettingsLayoutAutoSave, readSettingsSortMode, writeSettingsLayoutAutoSave, writeSettingsSortMode} from "$lib/localStorageStores";
+  import {
+    readSettingsLayoutAnimatedBadge,
+    readSettingsLayoutAutoSave,
+    readSettingsSortMode,
+    writeSettingsLayoutAnimatedBadge,
+    writeSettingsLayoutAutoSave,
+    writeSettingsSortMode
+  } from "$lib/localStorageStores";
+  import {INDICATOR_EFFECT_OPTIONS, type IndicatorEffect} from "$lib/indicatorEffects";
   import * as Table from "$lib/components/ui/table";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import type {NeuzConfig} from "$lib/types";
@@ -117,6 +126,16 @@
   let multiSessionSettingsPopoverStates: { [layoutId: string]: boolean } = $state({})
   let autoSaveLayouts = $state(true)
   let autoSaveLayoutsPopoverOpen = $state(false)
+  let animatedLayoutBadge = $state(true)
+  let layoutBadgeAnimationEffect: IndicatorEffect = $state('effect1')
+  let animatedLayoutBadgePopoverOpen = $state(false)
+
+  const writeLayoutBadgeAnimationSettings = () => {
+    writeSettingsLayoutAnimatedBadge({
+      enabled: animatedLayoutBadge,
+      effect: layoutBadgeAnimationEffect
+    })
+  }
 
   const getLayoutSessionIds = (layout: NeuzConfig['layouts'][number]) => {
     return (layout.rows ?? []).flatMap((row) => row.sessionIds ?? [])
@@ -378,6 +397,9 @@
   onMount(() => {
     useDragLayoutSorting = readSettingsSortMode('layoutSettings') === 'dragDrop'
     autoSaveLayouts = readSettingsLayoutAutoSave()
+    const layoutBadgeAnimationSettings = readSettingsLayoutAnimatedBadge()
+    animatedLayoutBadge = layoutBadgeAnimationSettings.enabled
+    layoutBadgeAnimationEffect = layoutBadgeAnimationSettings.effect
 
     const handleSettingsSaved = () => {
       cleanupEmptyCustomizationRows()
@@ -439,6 +461,49 @@
         Default Layouts on Launch
       </Card.Title>
       <div class="flex items-center gap-2">
+        <Popover.Root bind:open={animatedLayoutBadgePopoverOpen}>
+          <Popover.Trigger>
+            <Button variant="outline" size="sm" class="h-8 gap-2">
+              <Sparkles class="h-4 w-4"></Sparkles>
+              Animated
+              <Separator orientation="vertical" class="h-4"></Separator>
+              <span class={animatedLayoutBadge ? 'text-foreground' : 'text-muted-foreground'}>{animatedLayoutBadge ? 'ON' : 'OFF'}</span>
+            </Button>
+          </Popover.Trigger>
+          <Popover.Content class="w-80 space-y-3 p-3" align="end">
+            <div class="flex items-start justify-between gap-3">
+              <div class="space-y-1">
+                <div class="text-sm font-medium">Enable Layout Badge Animation</div>
+                <p class="text-xs leading-relaxed text-muted-foreground">
+                  Show an Animated Glow Effect on the currently Active Layout.
+                </p>
+              </div>
+              <Switch
+                checked={animatedLayoutBadge}
+                onCheckedChange={(checked) => {
+                  animatedLayoutBadge = checked
+                  writeLayoutBadgeAnimationSettings()
+                }}
+              />
+            </div>
+            <div class="flex w-full overflow-hidden rounded-md border border-input">
+              {#each INDICATOR_EFFECT_OPTIONS as option (option.value)}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  class="h-8 flex-1 rounded-none border-0 {layoutBadgeAnimationEffect === option.value ? 'bg-accent text-foreground' : 'text-muted-foreground'}"
+                  onclick={() => {
+                    layoutBadgeAnimationEffect = option.value
+                    writeLayoutBadgeAnimationSettings()
+                  }}
+                >
+                  {option.label}
+                </Button>
+              {/each}
+            </div>
+          </Popover.Content>
+        </Popover.Root>
         <Popover.Root bind:open={autoSaveLayoutsPopoverOpen}>
           <Popover.Trigger>
             <Button variant="outline" size="sm" class="h-8 gap-2">

@@ -1,3 +1,9 @@
+import {
+  DEFAULT_INDICATOR_EFFECT_SETTINGS,
+  normalizeIndicatorEffect,
+  type IndicatorEffectSettings
+} from '$lib/indicatorEffects';
+
 type SortModeScope = 'sessionSettings' | 'layoutSettings' | 'sessionActions';
 type CollapsedGroupsScope = 'sessionSettings' | 'sessionLauncher' | 'sessionLauncherMainbar';
 type SortMode = 'arrows' | 'dragDrop';
@@ -87,6 +93,7 @@ type QuestlogStorage = {
 const SETTINGS_SORT_MODE_STORAGE_KEY = 'settings.sortMode';
 const SETTINGS_COLLAPSED_GROUPS_STORAGE_KEY = 'settings.collapsedGroups';
 const SETTINGS_LAYOUT_AUTO_SAVE_STORAGE_KEY = 'settings.layoutAutoSave';
+export const SETTINGS_LAYOUT_ANIMATED_BADGE_STORAGE_KEY = 'settings.layoutAnimatedBadge';
 const MINI_BROWSER_STORAGE_KEY = 'widget.miniBrowser';
 const FCOIN_CALCULATOR_STORAGE_KEY = 'widget.fcoinCalculator';
 const NOTEPAD_STORAGE_KEY = 'widget.notepad';
@@ -538,6 +545,36 @@ export const writeSettingsLayoutAutoSave = (enabled: boolean) => {
   } else {
     window.localStorage.setItem(SETTINGS_LAYOUT_AUTO_SAVE_STORAGE_KEY, 'false');
   }
+};
+
+export const readSettingsLayoutAnimatedBadge = (): IndicatorEffectSettings => {
+  const defaults = {...DEFAULT_INDICATOR_EFFECT_SETTINGS};
+  if (!canUseLocalStorage()) return defaults;
+
+  const stored = window.localStorage.getItem(SETTINGS_LAYOUT_ANIMATED_BADGE_STORAGE_KEY);
+  if (stored === null) return defaults;
+  if (stored === 'false') return {enabled: false, effect: 'effect1'};
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<IndicatorEffectSettings>;
+    return {enabled: parsed.enabled !== false, effect: normalizeIndicatorEffect(parsed.effect)};
+  } catch {
+    return defaults;
+  }
+};
+
+export const writeSettingsLayoutAnimatedBadge = (settings: IndicatorEffectSettings) => {
+  if (!canUseLocalStorage()) return;
+
+  if (settings.enabled && settings.effect === 'effect1') {
+    window.localStorage.removeItem(SETTINGS_LAYOUT_ANIMATED_BADGE_STORAGE_KEY);
+    return;
+  }
+
+  const stored: Partial<IndicatorEffectSettings> = {};
+  if (!settings.enabled) stored.enabled = false;
+  if (settings.effect !== 'effect1') stored.effect = settings.effect;
+  window.localStorage.setItem(SETTINGS_LAYOUT_ANIMATED_BADGE_STORAGE_KEY, JSON.stringify(stored));
 };
 
 export const readSettingsCollapsedGroups = (

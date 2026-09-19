@@ -49,7 +49,9 @@
   import {getQuestPanelContext} from "$lib/contexts/questPanelContext.svelte";
   import {getUIActionContext} from "$lib/contexts/uiActionContext.svelte";
   import {
+    readSettingsLayoutAnimatedBadge,
     readSettingsCollapsedGroups,
+    SETTINGS_LAYOUT_ANIMATED_BADGE_STORAGE_KEY,
     writeSettingsCollapsedGroups,
   } from "$lib/localStorageStores";
   import {
@@ -57,6 +59,12 @@
     type TemporaryLayoutRenderingLease,
   } from "$lib/temporaryLayoutRendering.svelte";
   import {isSingleSessionLayoutOpenInSessionWindow} from "$lib/layoutAvailability";
+  import {
+    getIndicatorEffectClass,
+    LAYOUT_INDICATOR_EFFECT_CLASS,
+    STATIC_INDICATOR_EFFECT_CLASS,
+    type IndicatorEffect
+  } from "$lib/indicatorEffects";
 
   let {isFullscreen = false}: {isFullscreen?: boolean} = $props();
 
@@ -70,6 +78,8 @@
   const ungroupedGroupId = 'ungrouped';
   const START_ALL_BACKGROUND_RENDER_MS = 5000;
   let startAllLayoutsPending = $state(false);
+  let layoutBadgeAnimated = $state(true);
+  let layoutBadgeAnimationEffect: IndicatorEffect = $state('effect1');
   let startAllLayoutRenderingLease: TemporaryLayoutRenderingLease | null = null;
   let startAllLayoutRenderingTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -82,6 +92,12 @@
 
   function loadCollapsedSessionGroups() {
     collapsedSessionGroupIds = readSettingsCollapsedGroups('sessionLauncherMainbar', sanitizeCollapsedSessionGroups);
+  }
+
+  function loadLayoutBadgeAnimationSettings() {
+    const settings = readSettingsLayoutAnimatedBadge();
+    layoutBadgeAnimated = settings.enabled;
+    layoutBadgeAnimationEffect = settings.effect;
   }
 
   function saveCollapsedSessionGroups() {
@@ -107,11 +123,20 @@
 
   onMount(() => {
     loadCollapsedSessionGroups();
+    loadLayoutBadgeAnimationSettings();
     const handleShortcutsStateChanged = (_: any, newEnabled: boolean) => {
       shortcutsEnabled = newEnabled;
     };
     const handleActiveKeybindProfileChanged = (_: any, profileId: string) => {
       mainWindowState.config.activeKeyBindProfileId = profileId;
+    };
+    const handleLayoutBadgeAnimationStorage = (event: StorageEvent) => {
+      if (event.key === SETTINGS_LAYOUT_ANIMATED_BADGE_STORAGE_KEY || event.key === null) {
+        loadLayoutBadgeAnimationSettings();
+      }
+    };
+    const refreshLayoutBadgeAnimation = () => {
+      loadLayoutBadgeAnimationSettings();
     };
 
     void electronApi.invoke("shortcuts.get_state")
@@ -124,10 +149,14 @@
 
     electronApi.on("event.shortcuts_state_changed", handleShortcutsStateChanged);
     electronApi.on("event.active_keybind_profile_changed", handleActiveKeybindProfileChanged);
+    window.addEventListener('storage', handleLayoutBadgeAnimationStorage);
+    window.addEventListener('focus', refreshLayoutBadgeAnimation);
 
     return () => {
       electronApi.removeListener("event.shortcuts_state_changed", handleShortcutsStateChanged);
       electronApi.removeListener("event.active_keybind_profile_changed", handleActiveKeybindProfileChanged);
+      window.removeEventListener('storage', handleLayoutBadgeAnimationStorage);
+      window.removeEventListener('focus', refreshLayoutBadgeAnimation);
     };
   });
 
@@ -869,12 +898,25 @@
     {#each mainWindowState.tabs.layoutOrder as layoutId (layoutId)}
       {@const layTab = mainWindowState.layouts.find(l => l.id === layoutId)}
       {#if !layTab}{:else}
-      {@const disabledSwitch = mainWindowState.tabs.activeLayoutId === layoutId || isLayoutUnavailable(layoutId)}
+      {@const isActiveLayout = mainWindowState.tabs.activeLayoutId === layoutId}
+      {@const isUnavailableLayout = isLayoutUnavailable(layoutId)}
 
       <ContextMenu.Root>
         <ContextMenu.Trigger>
-          <Button variant="outline" size="xs" class="text-center" disabled={disabledSwitch}
-                  onclick={() => switchToLayout(layoutId)}>
+          <Button
+            variant="outline"
+            size="xs"
+            class={cn(
+              "text-center",
+              isActiveLayout && `${LAYOUT_INDICATOR_EFFECT_CLASS} border-foreground/80 bg-accent font-semibold shadow-sm`,
+              isActiveLayout && (layoutBadgeAnimated ? getIndicatorEffectClass(layoutBadgeAnimationEffect) : STATIC_INDICATOR_EFFECT_CLASS)
+            )}
+            disabled={isUnavailableLayout}
+            aria-current={isActiveLayout ? 'page' : undefined}
+            onclick={() => {
+              if (!isActiveLayout) switchToLayout(layoutId)
+            }}
+          >
             <img src="icons/{layTab.icon.slug}.png" alt={layTab.icon.slug} class="w-4 h-4"/>
             {layTab.label}
             {#if layoutHasActiveReceiver(layTab)}
