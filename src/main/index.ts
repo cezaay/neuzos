@@ -160,6 +160,16 @@ const runningSessionOwners = new Map<string, 'main' | number>();
 // Tracks sessions actively being deleted so session.clear_cache does not recreate their partition folder
 const deletingSessionIds = new Set<string>();
 
+function getSessionWindowSessionIds(): string[] {
+  return Array.from(sessionWindows.entries())
+    .filter(([, window]) => !window.isDestroyed())
+    .map(([sessionId]) => sessionId);
+}
+
+function notifySessionWindowSessionIdsChanged(): void {
+  mainWindow?.webContents.send("event.session_windows_changed", getSessionWindowSessionIds());
+}
+
 /**
  * SEC-001: Only allow http/https URLs to be opened externally.
  * Prevents exploitation via dangerous protocol handlers (ms-msdt:, search-ms:,
@@ -1372,6 +1382,7 @@ function createSessionWindow(mode: LaunchMode, sessionId: string): void {
   const windowWebContentsId = window.webContents.id;
   sessionWindow = window;
   sessionWindows.set(sessionId, window);
+  notifySessionWindowSessionIdsChanged();
 
   if (startSessionImmediately) {
     runningSessionIds.add(sessionId);
@@ -1424,6 +1435,7 @@ function createSessionWindow(mode: LaunchMode, sessionId: string): void {
       runningSessionIds.delete(sessionId);
     }
     sessionWindows.delete(sessionId);
+    notifySessionWindowSessionIdsChanged();
     if (sessionWindow === window) {
       sessionWindow = null;
     }
@@ -2752,6 +2764,10 @@ function registerShortcutsForFocusedWindow(): void {
 
     ipcMain.handle("session.get_running_ids", async (): Promise<string[]> => {
       return Array.from(runningSessionIds);
+    });
+
+    ipcMain.handle("session_window.get_session_ids", async (): Promise<string[]> => {
+      return getSessionWindowSessionIds();
     });
 
     ipcMain.handle("session.clone", async (_event, sourceId: string): Promise<{ success: true; stoppedBeforeClone: boolean; newId: string } | { success: false; error: string }> => {

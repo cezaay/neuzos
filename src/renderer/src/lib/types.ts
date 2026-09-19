@@ -76,6 +76,7 @@ export type MainWindowState = {
     } | null
   }
   doCalculationUpdatesRng: number
+  sessionWindowSessionIds: string[]
   sessionsLayoutsRef: {
     [key: string]: {
       healthStatus?: SessionHealthStatus;

@@ -56,6 +56,7 @@
     temporaryLayoutRendering,
     type TemporaryLayoutRenderingLease,
   } from "$lib/temporaryLayoutRendering.svelte";
+  import {isSingleSessionLayoutOpenInSessionWindow} from "$lib/layoutAvailability";
 
   let {isFullscreen = false}: {isFullscreen?: boolean} = $props();
 
@@ -259,6 +260,7 @@
   }
 
   const switchToLayout = (layoutId: string) => {
+    if (isLayoutUnavailable(layoutId)) return
     neuzosBridge.layouts.switch(layoutId)
   }
 
@@ -383,6 +385,13 @@
     return layout?.rows.some(row => row.sessionIds.some(sessionId => isSessionStarted(layoutId, sessionId))) ?? false
   }
 
+  const isLayoutUnavailable = (layoutId: string): boolean => {
+    return isSingleSessionLayoutOpenInSessionWindow(
+      mainWindowState.layouts.find((layout) => layout.id === layoutId),
+      mainWindowState.sessionWindowSessionIds
+    )
+  }
+
   const restartAllSessions = (layoutId: string) => {
     const layout = mainWindowState.layouts.find(candidate => candidate.id === layoutId)
     layout?.rows.flatMap(row => row.sessionIds).forEach(sessionId => restartSession(layoutId, sessionId))
@@ -390,6 +399,7 @@
 
   const getMainbarLayoutsToStart = () => {
     return mainWindowState.tabs.layoutsIds.filter(layoutId => {
+      if (isLayoutUnavailable(layoutId)) return false
       const layout = mainWindowState.layouts.find(candidate => candidate.id === layoutId)
       return layout?.rows.some(row => row.sessionIds.some(sessionId => !isSessionStarted(layoutId, sessionId))) ?? false
     })
@@ -404,6 +414,7 @@
     if (mainWindowState.tabs.activeLayoutId === 'home') {
       const firstMainbarLayoutId = mainWindowState.tabs.layoutOrder.find(layoutId =>
         mainWindowState.tabs.layoutsIds.includes(layoutId) &&
+        !isLayoutUnavailable(layoutId) &&
         mainWindowState.layouts.some(layout => layout.id === layoutId)
       )
       if (firstMainbarLayoutId) {
@@ -858,7 +869,7 @@
     {#each mainWindowState.tabs.layoutOrder as layoutId (layoutId)}
       {@const layTab = mainWindowState.layouts.find(l => l.id === layoutId)}
       {#if !layTab}{:else}
-      {@const disabledSwitch = mainWindowState.tabs.activeLayoutId === layoutId}
+      {@const disabledSwitch = mainWindowState.tabs.activeLayoutId === layoutId || isLayoutUnavailable(layoutId)}
 
       <ContextMenu.Root>
         <ContextMenu.Trigger>

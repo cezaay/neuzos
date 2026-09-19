@@ -19,6 +19,7 @@
   import {Button} from "$lib/components/ui/button";
   import {Minimize} from '@lucide/svelte';
   import {shouldRevealLayoutFocusTitlebar, toggleLayoutFullscreen} from '$lib/layout-focus';
+  import {isSingleSessionLayoutOpenInSessionWindow} from '$lib/layoutAvailability';
 
 
   import {cleanupActionPadStorage, cleanupActionPinsStorage, readSettingsLayoutAutoSave} from '$lib/localStorageStores';
@@ -152,6 +153,7 @@
       focusedLayoutSession: null,
     },
     sessionsLayoutsRef: {},
+    sessionWindowSessionIds: [],
     doCalculationUpdatesRng: 0
   })
 
@@ -225,9 +227,37 @@
     }
   })
 
+  const isLayoutUnavailable = (layoutId: string | null): boolean => {
+    if (!layoutId || layoutId === 'home') return false
+    return isSingleSessionLayoutOpenInSessionWindow(
+      mainWindowState.layouts.find((layout) => layout.id === layoutId),
+      mainWindowState.sessionWindowSessionIds
+    )
+  }
+
+  const getAvailableLayoutOrder = (): string[] => {
+    return mainWindowState.tabs.layoutOrder.filter((layoutId) => !isLayoutUnavailable(layoutId))
+  }
+
+  const reconcileUnavailableLayouts = () => {
+    if (isLayoutUnavailable(mainWindowState.tabs.previousLayoutId)) {
+      mainWindowState.tabs.previousLayoutId = null
+    }
+
+    if (!isLayoutUnavailable(mainWindowState.tabs.activeLayoutId)) return
+
+    const fallbackLayoutId = getAvailableLayoutOrder()[0] ?? 'home'
+    mainWindowState.tabs.activeLayoutId = fallbackLayoutId
+    mainWindowState.tabs.previousLayoutId = null
+    mainWindowState.tabs.activeLayoutSession = null
+  }
+
   listen('event.layout_switch', (_, layoutId: string) => {
     console.log("layout_switch", layoutId)
-    mainWindowState.tabs.previousLayoutId = mainWindowState.tabs.activeLayoutId
+    if (isLayoutUnavailable(layoutId)) return
+    mainWindowState.tabs.previousLayoutId = isLayoutUnavailable(mainWindowState.tabs.activeLayoutId)
+      ? null
+      : mainWindowState.tabs.activeLayoutId
     mainWindowState.tabs.activeLayoutId = layoutId
     mainWindowState.tabs.activeLayoutSession = null
   })
@@ -268,28 +298,32 @@
   listen('event.layout_swap', (_) => {
     const activeLayoutId = mainWindowState.tabs.activeLayoutId
     const previousLayoutId = mainWindowState.tabs.previousLayoutId
-    if (previousLayoutId) {
+    if (previousLayoutId && !isLayoutUnavailable(previousLayoutId)) {
       const newLayoutId = previousLayoutId
-      mainWindowState.tabs.previousLayoutId = activeLayoutId
+      mainWindowState.tabs.previousLayoutId = isLayoutUnavailable(activeLayoutId) ? null : activeLayoutId
       mainWindowState.tabs.activeLayoutId = newLayoutId
       mainWindowState.tabs.activeLayoutSession = null
+    } else if (previousLayoutId) {
+      mainWindowState.tabs.previousLayoutId = null
     }
   })
 
   const cycleLayout = (direction: 1 | -1) => {
-    const layoutOrder = mainWindowState.tabs.layoutOrder
-    if (layoutOrder.length <= 1) {
+    const layoutOrder = getAvailableLayoutOrder()
+    if (layoutOrder.length === 0) {
       return
     }
 
     const activeLayoutId = mainWindowState.tabs.activeLayoutId
     const currentIndex = layoutOrder.findIndex(layoutId => layoutId === activeLayoutId)
     const nextIndex = currentIndex === -1
-      ? 0
+      ? (direction === 1 ? 0 : layoutOrder.length - 1)
       : (currentIndex + direction + layoutOrder.length) % layoutOrder.length
     const nextLayoutId = layoutOrder[nextIndex]
 
-    mainWindowState.tabs.previousLayoutId = activeLayoutId
+    if (nextLayoutId === activeLayoutId) return
+
+    mainWindowState.tabs.previousLayoutId = isLayoutUnavailable(activeLayoutId) ? null : activeLayoutId
     mainWindowState.tabs.activeLayoutId = nextLayoutId
     mainWindowState.tabs.activeLayoutSession = null
   }
@@ -451,6 +485,11 @@
 
   listen('event.send_key_to_session', (_, sessionId: string, ingameKey: string) => {
     sendKeyToReceiverSession(sessionId, ingameKey)
+  })
+
+  listen('event.session_windows_changed', (_, sessionIds: string[]) => {
+    mainWindowState.sessionWindowSessionIds = Array.isArray(sessionIds) ? sessionIds : []
+    reconcileUnavailableLayouts()
   })
 
   listen('event.send_to_receiver', (_, ingameKey: string) => {
@@ -705,6 +744,8 @@
       mainWindowState.tabs.layoutOrder = JSON.parse(JSON.stringify(validDefaultLayouts))
       mainWindowState.tabs.activeLayoutId = 'home'
       mainWindowState.tabs.previousLayoutId = null
+      mainWindowState.sessionWindowSessionIds = await neuzosBridge.sessions.getSessionWindowIds()
+      reconcileUnavailableLayouts()
 
       // Load the registry in the background so the app UI can appear even if it fails.
       void (async () => {

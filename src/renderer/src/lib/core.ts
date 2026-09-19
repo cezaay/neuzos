@@ -123,6 +123,9 @@ export const neuzosBridge = {
     getRunningIds: (): Promise<string[]> => {
       return electronApi?.invoke("session.get_running_ids") ?? Promise.resolve([]);
     },
+    getSessionWindowIds: (): Promise<string[]> => {
+      return electronApi?.invoke("session_window.get_session_ids") ?? Promise.resolve([]);
+    },
     clone: (sourceId: string): Promise<SessionCloneResult> => {
       return electronApi?.invoke("session.clone", sourceId) ?? Promise.resolve({ success: false, error: "Electron API unavailable" });
     },
