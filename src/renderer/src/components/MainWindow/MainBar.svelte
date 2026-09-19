@@ -80,6 +80,11 @@
   let startAllLayoutsPending = $state(false);
   let layoutBadgeAnimated = $state(true);
   let layoutBadgeAnimationEffect: IndicatorEffect = $state('effect1');
+  let draggedLayoutBadgeId = $state<string | null>(null);
+  let draggedLayoutBadgeWidth = $state(0);
+  let layoutBadgeDropTargetId = $state<string | null>(null);
+  let layoutBadgeDropPosition = $state<'before' | 'after' | null>(null);
+  let suppressLayoutBadgeClickUntil = 0;
   let startAllLayoutRenderingLease: TemporaryLayoutRenderingLease | null = null;
   let startAllLayoutRenderingTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -295,6 +300,84 @@
 
   const closeLayout = (layoutId: string) => {
     neuzosBridge.layouts.close(layoutId)
+  }
+
+  const clearLayoutBadgeDragState = () => {
+    draggedLayoutBadgeId = null
+    draggedLayoutBadgeWidth = 0
+    layoutBadgeDropTargetId = null
+    layoutBadgeDropPosition = null
+  }
+
+  const handleLayoutBadgeDragStart = (event: DragEvent, layoutId: string) => {
+    draggedLayoutBadgeId = layoutId
+    draggedLayoutBadgeWidth = (event.currentTarget as HTMLElement).getBoundingClientRect().width
+    layoutBadgeDropTargetId = null
+    layoutBadgeDropPosition = null
+
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('application/x-neuzos-layout', layoutId)
+      event.dataTransfer.setData('text/plain', layoutId)
+    }
+  }
+
+  const handleLayoutBadgeDragOver = (event: DragEvent, layoutId: string) => {
+    if (!draggedLayoutBadgeId || draggedLayoutBadgeId === layoutId) return
+
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+
+    const target = event.currentTarget as HTMLElement
+    const bounds = target.getBoundingClientRect()
+    layoutBadgeDropTargetId = layoutId
+    layoutBadgeDropPosition = event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after'
+  }
+
+  const handleLayoutBadgePlaceholderDragOver = (
+    event: DragEvent,
+    targetLayoutId: string,
+    dropPosition: 'before' | 'after'
+  ) => {
+    if (!draggedLayoutBadgeId || draggedLayoutBadgeId === targetLayoutId) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+    layoutBadgeDropTargetId = targetLayoutId
+    layoutBadgeDropPosition = dropPosition
+  }
+
+  const handleLayoutBadgeDrop = (event: DragEvent, targetLayoutId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const sourceLayoutId = draggedLayoutBadgeId
+      ?? event.dataTransfer?.getData('application/x-neuzos-layout')
+      ?? null
+    const dropPosition = layoutBadgeDropPosition
+
+    if (!sourceLayoutId || sourceLayoutId === targetLayoutId || !dropPosition) {
+      clearLayoutBadgeDragState()
+      return
+    }
+
+    const nextOrder = mainWindowState.tabs.layoutOrder.filter(layoutId => layoutId !== sourceLayoutId)
+    const targetIndex = nextOrder.indexOf(targetLayoutId)
+    if (targetIndex < 0) {
+      clearLayoutBadgeDragState()
+      return
+    }
+
+    nextOrder.splice(targetIndex + (dropPosition === 'after' ? 1 : 0), 0, sourceLayoutId)
+    mainWindowState.tabs.layoutOrder = nextOrder
+    suppressLayoutBadgeClickUntil = Date.now() + 200
+    clearLayoutBadgeDragState()
+  }
+
+  const handleLayoutBadgeDragEnd = () => {
+    suppressLayoutBadgeClickUntil = Date.now() + 200
+    clearLayoutBadgeDragState()
   }
 
   const toggleLayoutInMainBar = (layoutId: string) => {
@@ -901,19 +984,38 @@
       {@const isActiveLayout = mainWindowState.tabs.activeLayoutId === layoutId}
       {@const isUnavailableLayout = isLayoutUnavailable(layoutId)}
 
+      {#if layoutBadgeDropTargetId === layoutId && layoutBadgeDropPosition === 'before'}
+        <button
+          type="button"
+          tabindex="-1"
+          aria-label="Layout drop position"
+          class="h-7 shrink-0 rounded-md border-2 border-dashed border-primary/80 bg-primary/5 shadow-sm shadow-primary/15"
+          style={`width: ${Math.max(32, draggedLayoutBadgeWidth)}px;`}
+          ondragover={(event) => handleLayoutBadgePlaceholderDragOver(event, layoutId, 'before')}
+          ondrop={(event) => handleLayoutBadgeDrop(event, layoutId)}
+        ></button>
+      {/if}
+
       <ContextMenu.Root>
         <ContextMenu.Trigger>
           <Button
             variant="outline"
             size="xs"
+            draggable={!isUnavailableLayout}
+            ondragstart={(event) => handleLayoutBadgeDragStart(event, layoutId)}
+            ondragover={(event) => handleLayoutBadgeDragOver(event, layoutId)}
+            ondrop={(event) => handleLayoutBadgeDrop(event, layoutId)}
+            ondragend={handleLayoutBadgeDragEnd}
             class={cn(
-              "text-center",
+              "relative cursor-default text-center",
+              draggedLayoutBadgeId === layoutId && "opacity-50",
               isActiveLayout && `${LAYOUT_INDICATOR_EFFECT_CLASS} border-foreground/80 bg-accent font-semibold shadow-sm`,
               isActiveLayout && (layoutBadgeAnimated ? getIndicatorEffectClass(layoutBadgeAnimationEffect) : STATIC_INDICATOR_EFFECT_CLASS)
             )}
             disabled={isUnavailableLayout}
             aria-current={isActiveLayout ? 'page' : undefined}
             onclick={() => {
+              if (Date.now() < suppressLayoutBadgeClickUntil) return
               if (!isActiveLayout) switchToLayout(layoutId)
             }}
           >
@@ -1117,6 +1219,18 @@
           {/each}
         </ContextMenu.Content>
       </ContextMenu.Root>
+
+      {#if layoutBadgeDropTargetId === layoutId && layoutBadgeDropPosition === 'after'}
+        <button
+          type="button"
+          tabindex="-1"
+          aria-label="Layout drop position"
+          class="h-7 shrink-0 rounded-md border-2 border-dashed border-primary/80 bg-primary/5 shadow-sm shadow-primary/15"
+          style={`width: ${Math.max(32, draggedLayoutBadgeWidth)}px;`}
+          ondragover={(event) => handleLayoutBadgePlaceholderDragOver(event, layoutId, 'after')}
+          ondrop={(event) => handleLayoutBadgeDrop(event, layoutId)}
+        ></button>
+      {/if}
       {/if}
     {/each}
   </div>
